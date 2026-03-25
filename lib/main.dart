@@ -6,7 +6,7 @@ import 'Auth/presentation_page.dart';
 
 import 'Features/home_page.dart';
 import 'Features/search_page.dart';
-import 'Features/wallet_page.dart';
+import 'Features/Wallet/wallet_page.dart';
 import 'Features/profile_page.dart';
 
 void main() {
