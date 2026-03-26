@@ -2,17 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Add 'intl' to your pubspec.yaml for date formatting
 import 'package:file_picker/file_picker.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-
+import 'journey.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 class JourneyDetailsPage extends StatefulWidget {
-  const JourneyDetailsPage({super.key});
+  final Journey? existingJourney; // If null, we are ADDING. If not null, we are EDITING.
+  const JourneyDetailsPage({super.key, this.existingJourney});
 
   @override
   State<JourneyDetailsPage> createState() => _JourneyDetailsPageState();
+
+
 }
 
 class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
 
-  final TextEditingController _nameController = TextEditingController();
+  TextEditingController _nameController = TextEditingController();
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
   // Primary document controllers
@@ -46,8 +50,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   ];
 
   final TextEditingController _notesController = TextEditingController();
-
-// List of available modes for the dropdown
   final List<String> _transportModes = ['Airline', 'Train', 'Taxi', 'Metro', 'Bus', 'Ship'];
   // Function to show DatePicker
   Future<void> _selectDate(BuildContext context, TextEditingController controller) async {
@@ -104,6 +106,45 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       }
     } catch (e) {
       debugPrint("File picker error: $e");
+    }
+  }
+  Future<void> testFirebase() async {
+    try {
+      print("🚀 Attempting to save to Firebase...");
+
+      await FirebaseFirestore.instance.collection('journeys').add({
+        'name': 'Test Trip to Paris',
+        'destinations': ['Paris', 'Lyon'],
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'Connection Success!'
+      });
+
+      print("✅ Successfully saved to Firestore!");
+    } catch (e) {
+      print("❌ Firebase Error: $e");
+    }
+  }
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.existingJourney != null) {
+      // 1. Fill basic name
+      _nameController = TextEditingController(text: widget.existingJourney!.name);
+
+      // 2. Safely handle destinations
+      // Use the '??' operator to provide an empty list if it's null
+      final savedDests = widget.existingJourney!.destinations ?? [];
+
+      if (savedDests.isNotEmpty) {
+        _destControllers = savedDests.map((d) => TextEditingController(text: d.toString())).toList();
+      } else {
+        _destControllers = [TextEditingController()];
+      }
+    } else {
+      // If it's a completely new journey
+      _nameController = TextEditingController();
+      _destControllers = [TextEditingController()];
     }
   }
   @override
@@ -446,16 +487,17 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
               ),
               onPressed: () {
                 // For now, returning just the trip name
+                testFirebase();
                 Navigator.pop(context, _nameController.text);
+
               },
-              child: const Text('Save', style: TextStyle(color: Colors.white)),
+              child: Text(widget.existingJourney == null ? "Save" : "Update", style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
       ),
     );
   }
-
   // Updated Helper for TextFields with Icon Taps
   Widget _buildTextField(
       String hint,
@@ -571,4 +613,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       ],
     );
   }
+
+
 }

@@ -14,4 +14,8 @@ class Journey {
     this.endDate,
     this.type,
   });
+
+  get destinations => null;
+
+  String? operator [](String other) {}
 }
