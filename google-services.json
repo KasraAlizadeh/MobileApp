@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "776828165461",
+    "project_id": "travelmate-polimi",
+    "storage_bucket": "travelmate-polimi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:776828165461:android:135c78dd853c61171fe3dc",
+        "android_client_info": {
+          "package_name": "com.example.travel_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCWl4B0w93z5HZ5GPoC_2Vqp2q71hQ9OKM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
