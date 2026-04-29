@@ -1,16 +1,28 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
+  static const Color brandGreen = Color(0xFF52796F);
+
   static final theme1 = ThemeData(
-    colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-    appBarTheme: AppBarThemeData(
+    colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.teal,
+        primary: brandGreen
+    ),
+    appBarTheme: const AppBarThemeData(
       toolbarHeight: 80,
       titleTextStyle: TextStyle(
         fontFamily: 'montserrat',
+        fontSize: 50,
+        fontWeight: FontWeight.bold,
+        color: brandGreen,
+      )
+    ),
+    textTheme: const TextTheme(
+      titleLarge: TextStyle(
         fontSize: 30,
         fontWeight: FontWeight.bold,
-        color: Color(0xFF52796F),
-      )
+        color: brandGreen,
+      ),
     ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: Colors.transparent,
