@@ -41,46 +41,48 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDT2J2zwIwlZEH3I49u5z6SCpFgJf8z96E',
-    appId: '1:776828165461:web:a3c9178f07f3c1a91fe3dc',
-    messagingSenderId: '776828165461',
-    projectId: 'travelmate-polimi',
-    authDomain: 'travelmate-polimi.firebaseapp.com',
-    storageBucket: 'travelmate-polimi.firebasestorage.app',
+    apiKey: 'AIzaSyBpRh1F9WspNIR7Sr2hqNmVVdGRr2CuQyk',
+    appId: '1:851301611493:web:2829330699655850b6210c',
+    messagingSenderId: '851301611493',
+    projectId: 'travel-project-7bac6',
+    authDomain: 'travel-project-7bac6.firebaseapp.com',
+    storageBucket: 'travel-project-7bac6.firebasestorage.app',
+    measurementId: 'G-62GWRPEX48',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCWl4B0w93z5HZ5GPoC_2Vqp2q71hQ9OKM',
-    appId: '1:776828165461:android:135c78dd853c61171fe3dc',
-    messagingSenderId: '776828165461',
-    projectId: 'travelmate-polimi',
-    storageBucket: 'travelmate-polimi.firebasestorage.app',
+    apiKey: 'AIzaSyB6RC4qtLp5cGHWzIweSPO7k4uJ0nwJMC4',
+    appId: '1:851301611493:android:4d4ab8bd2f837ac8b6210c',
+    messagingSenderId: '851301611493',
+    projectId: 'travel-project-7bac6',
+    storageBucket: 'travel-project-7bac6.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAmLl9s5TG_-Ki0cpWIIadOOa01X_KXb3U',
-    appId: '1:776828165461:ios:a6f1a116fadf532b1fe3dc',
-    messagingSenderId: '776828165461',
-    projectId: 'travelmate-polimi',
-    storageBucket: 'travelmate-polimi.firebasestorage.app',
+    apiKey: 'AIzaSyCU95JJjGj1KWwFgGqt1LgmYMrUlLLttIU',
+    appId: '1:851301611493:ios:8fa0e1da1233b9eab6210c',
+    messagingSenderId: '851301611493',
+    projectId: 'travel-project-7bac6',
+    storageBucket: 'travel-project-7bac6.firebasestorage.app',
     iosBundleId: 'com.example.travelApp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAmLl9s5TG_-Ki0cpWIIadOOa01X_KXb3U',
-    appId: '1:776828165461:ios:a6f1a116fadf532b1fe3dc',
-    messagingSenderId: '776828165461',
-    projectId: 'travelmate-polimi',
-    storageBucket: 'travelmate-polimi.firebasestorage.app',
+    apiKey: 'AIzaSyCU95JJjGj1KWwFgGqt1LgmYMrUlLLttIU',
+    appId: '1:851301611493:ios:8fa0e1da1233b9eab6210c',
+    messagingSenderId: '851301611493',
+    projectId: 'travel-project-7bac6',
+    storageBucket: 'travel-project-7bac6.firebasestorage.app',
     iosBundleId: 'com.example.travelApp',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDT2J2zwIwlZEH3I49u5z6SCpFgJf8z96E',
-    appId: '1:776828165461:web:a1d1a73a577610881fe3dc',
-    messagingSenderId: '776828165461',
-    projectId: 'travelmate-polimi',
-    authDomain: 'travelmate-polimi.firebaseapp.com',
-    storageBucket: 'travelmate-polimi.firebasestorage.app',
+    apiKey: 'AIzaSyBpRh1F9WspNIR7Sr2hqNmVVdGRr2CuQyk',
+    appId: '1:851301611493:web:09b92ac6776b31abb6210c',
+    messagingSenderId: '851301611493',
+    projectId: 'travel-project-7bac6',
+    authDomain: 'travel-project-7bac6.firebaseapp.com',
+    storageBucket: 'travel-project-7bac6.firebasestorage.app',
+    measurementId: 'G-GN1VDQFJD5',
   );
 }

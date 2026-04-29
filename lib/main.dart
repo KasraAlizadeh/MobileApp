@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 import 'Appearance/theme_controller.dart';
 import 'Auth/presentation_page.dart';
@@ -8,8 +10,7 @@ import 'Features/home_page.dart';
 import 'Features/search_page.dart';
 import 'Features/Wallet/wallet_page.dart';
 import 'Features/profile_page.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
