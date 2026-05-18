@@ -26,7 +26,6 @@ class HomePage extends StatelessWidget {
           children: [
             Text('Home'),
             SizedBox(width: 8,),
-            Icon(Icons.airplanemode_active, color: Colors.black, size: 30,),
           ],
         ),
       ),
@@ -119,7 +118,104 @@ class HomePage extends StatelessWidget {
               ),
             ),
             SizedBox(
-              height: 200,
+              height: 150,
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('new places').snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(child: Text('Error loading data'));
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final docs = snapshot.data!.docs;
+
+                  if (docs.isEmpty) {
+                    return const Center(child: Text('No destination found'));
+                  }
+
+                  return ListView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final data = docs[index].data() as Map<String, dynamic>;
+                      final name = data['name'] ?? 'No name';
+                      final imagePath = data['image'] ?? '';
+                      final description = data['description'] ?? 'No description';
+
+                      return FutureBuilder<String>(
+                        future: _getImageUrl(imagePath),
+                        builder: (context, urlSnapshot) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      width: 3,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.1),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 5),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: _buildImageWidget(urlSnapshot),
+                                        ),
+                                        Positioned.fill(
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: () {
+                                                _showDestinationDetails(context, name, description);
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  name,
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              child: Text(
+                "Still to be visited...",
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            SizedBox(
+              height: 150,
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('new places').snapshots(),
                 builder: (context, snapshot) {
