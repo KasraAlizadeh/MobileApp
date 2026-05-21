@@ -36,7 +36,10 @@ class HomePage extends StatelessWidget {
             SizedBox(
               height: 250,
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('destinations').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('destinations')
+                    .where('state', isEqualTo: 'visited')
+                    .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return const Center(child: Text('Error loading data'));
@@ -61,17 +64,23 @@ class HomePage extends StatelessWidget {
                       final name = data['name'] ?? 'No name';
                       final imagePath = data['image'] ?? '';
                       final description = data['description'] ?? 'No description';
-
                       return FutureBuilder<String>(
                         future: _getImageUrl(imagePath),
                         builder: (context, urlSnapshot) {
                           return Container(
-                            width: MediaQuery.of(context).size.width * 0.4,
-                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            width: MediaQuery
+                                .of(context)
+                                .size
+                                .width * 0.4,
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(25),
                               border: Border.all(
-                                color: Theme.of(context).colorScheme.primary,
+                                color: Theme
+                                    .of(context)
+                                    .colorScheme
+                                    .primary,
                                 width: 3,
                               ),
                               boxShadow: [
@@ -94,7 +103,8 @@ class HomePage extends StatelessWidget {
                                       color: Colors.transparent,
                                       child: InkWell(
                                         onTap: () {
-                                          _showDestinationDetails(context, name, description);
+                                          _showDestinationDetails(
+                                              context, name, description);
                                         },
                                       ),
                                     ),
@@ -105,7 +115,7 @@ class HomePage extends StatelessWidget {
                           );
                         },
                       );
-                    },
+                    }
                   );
                 },
               ),
@@ -120,7 +130,10 @@ class HomePage extends StatelessWidget {
             SizedBox(
               height: 150,
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('new places').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('destinations')
+                    .where('state', isEqualTo: 'not_visited')
+                    .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return const Center(child: Text('Error loading data'));
@@ -217,7 +230,10 @@ class HomePage extends StatelessWidget {
             SizedBox(
               height: 150,
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('new places').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('destinations')
+                    .where('state', isEqualTo: 'to_be_visited')
+                    .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return const Center(child: Text('Error loading data'));
