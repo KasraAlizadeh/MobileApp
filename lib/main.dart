@@ -1,21 +1,25 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'Features/Wallet/journey.dart';
+import 'Features/Wallet/journey_details.dart';
 import 'firebase_options.dart';
-
 import 'Appearance/theme_controller.dart';
 import 'Auth/presentation_page.dart';
-
 import 'Features/home_page.dart';
 import 'Features/search_page.dart';
 import 'Features/Wallet/wallet_page.dart';
 import 'Features/profile_page.dart';
+import 'package:awesome_notifications/awesome_notifications.dart';
+import 'Services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await NotificationService.initialize();
   runApp(const MyApp());
 }
 
@@ -75,7 +79,51 @@ class _MainPageState extends State<MainPage> {
       _selectedIndex = index;
     });
   }
+  @override
+  void initState() {
+    super.initState();
+    // This will trigger the permission check as soon as this page opens
+    _checkNotificationPermissions();
+    AwesomeNotifications().setListeners(
+      onActionReceivedMethod: (ReceivedAction receivedAction) async {
+        // Check if they clicked the Reschedule button
+        if (receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION') {
+          String? journeyId = receivedAction.payload?['journeyId'];
+          if (journeyId != null) {
+            _navigateToEditJourney(journeyId);
+          }
+        }
+      },
+    );
+  }
+  void _navigateToEditJourney(String journeyId) async {
+    // 1. Fetch the full journey object from Firestore using the ID
+    var doc = await FirebaseFirestore.instance.collection('journeys').doc(journeyId).get();
+    if (doc.exists) {
+      // 2. Convert it to your Journey model object
+      Journey existingJourney = Journey.fromFirestore(doc); // Or however your model maps it
 
+      // 3. Jump to edit page!
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => JourneyDetailsPage(existingJourney: existingJourney),
+          ),
+        );
+      }
+    }
+  }
+  void _checkNotificationPermissions() {
+    AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
+      if (!isAllowed) {
+        // If permission is not allowed, prompt the user
+        // You could also show a custom dialog here explaining WHY you need it
+        // before calling this prompt.
+        AwesomeNotifications().requestPermissionToSendNotifications();
+      }
+    });
+  }
   @override
   Widget build(BuildContext context) {
     return PopScope(

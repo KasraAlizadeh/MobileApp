@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // Add 'intl' to your pubspec.yaml for date formatting
+import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'journey.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 class JourneyDetailsPage extends StatefulWidget {
   final Journey? existingJourney; // If null, we are ADDING. If not null, we are EDITING.
   const JourneyDetailsPage({super.key, this.existingJourney});
@@ -19,21 +21,16 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   TextEditingController _nameController = TextEditingController();
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
-  // Primary document controllers
-  final TextEditingController _passportController = TextEditingController();
   final TextEditingController _visaController = TextEditingController();
   final TextEditingController _ticketController = TextEditingController();
   final TextEditingController _insuranceController = TextEditingController();
-
-// List for "Any Other" dynamic documents
+  final _formKey = GlobalKey<FormState>();
+  List<String> pdfUrls = [];
   List<Map<String, dynamic>> _extraDocs = [
     {'name': TextEditingController(), 'fileName': 'No file selected'}
   ];
   String _selectedType = 'Travel Type';
-  // List of controllers for dynamic destinations
-  // The first one (index 0) is our "Primary" destination
   List<TextEditingController> _destControllers = [TextEditingController()];
-
   List<Map<String, dynamic>> _transportRows = [
     {'mode': 'Airline', 'controller': TextEditingController()}
   ];
@@ -51,7 +48,8 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
 
   final TextEditingController _notesController = TextEditingController();
   final List<String> _transportModes = ['Airline', 'Train', 'Taxi', 'Metro', 'Bus', 'Ship'];
-  // Function to show DatePicker
+  File? _newVisaFile, _newTicketFile, _newInsuranceFile;
+  List<String> _finalPdfUrls = ["", "", ""]; // [Visa, Ticket, Insurance]
   Future<void> _selectDate(BuildContext context, TextEditingController controller) async {
     DateTime? picked = await showDatePicker(
       context: context,
@@ -65,7 +63,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       });
     }
   }
-  Future<void> _pickFile(TextEditingController controller) async {
+  Future<void> _pickFile(TextEditingController controller, int index) async {
     // 1. Open the file explorer with specific filters
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -79,7 +77,12 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
 
       // 3. Update the UI to show the selected file name
       setState(() {
-        controller.text = file.name;
+        File pickedFile = File(result.files.single.path!);
+        controller.text = result.files.single.name;
+        //_finalPdfUrls[index] = url;
+        if (index == 0) _newVisaFile = pickedFile;
+        if (index == 1) _newTicketFile = pickedFile;
+        if (index == 2) _newInsuranceFile = pickedFile;
       });
 
       // Note: You can also get the path using file.path to upload it later
@@ -96,32 +99,76 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'png', 'docx'],
       );
-
       if (result != null) {
         setState(() {
           // Update the 'fileName' string in our Map at the specific index
           _extraDocs[index]['fileName'] = result.files.single.name;
-
         });
       }
     } catch (e) {
       debugPrint("File picker error: $e");
     }
   }
-  Future<void> testFirebase() async {
-    try {
-      print("🚀 Attempting to save to Firebase...");
+  List<String> _extractText(List<TextEditingController> controllers) {
+    return controllers
+        .map((c) => c.text.trim())
+        .where((text) => text.isNotEmpty)
+        .toList();
+  }
 
-      await FirebaseFirestore.instance.collection('journeys').add({
-        'name': 'Test Trip to Paris',
-        'destinations': ['Paris', 'Lyon'],
-        'timestamp': FieldValue.serverTimestamp(),
-        'status': 'Connection Success!'
+  List<Map<String, dynamic>> _extractRows(List<Map<String, dynamic>> rows) {
+    return rows.map((row) {
+      final Map<String, dynamic> cleanRow = {};
+      row.forEach((key, value) {
+        if (value is TextEditingController) {
+          cleanRow[key] = value.text.trim();
+        } else {
+          cleanRow[key] = value;
+        }
       });
+      return cleanRow;
+    }).toList();
+  }
+  Future<String> _upload(String name, File file, String folder) async {
+    Reference ref = FirebaseStorage.instance.ref().child('pdfs/$folder/$name');
+    await ref.putFile(file);
+    return await ref.getDownloadURL();
+  }
+  Future<void> saveJourney() async {
+    try{
+      String journeyId = _nameController.text.trim();
+    String folder = _nameController.text.trim();
+    String? fcmToken = await FirebaseMessaging.instance.getToken();
+    if (_newVisaFile != null) _finalPdfUrls[0] = await _upload("visa.pdf", _newVisaFile!, journeyId);
+    if (_newTicketFile != null) _finalPdfUrls[1] = await _upload("ticket.pdf", _newTicketFile!, journeyId);
+    if (_newInsuranceFile != null) _finalPdfUrls[2] = await _upload("insurance.pdf", _newInsuranceFile!, journeyId);
 
+      Map<String, dynamic> journeyData = {
+        'name': folder,
+        'travelType': _selectedType,
+        'startDate': _startController.text,
+        'endDate': _endController.text,
+        'destinations': _extractText(_destControllers),
+        'transportation': _extractRows(_transportRows),
+        'accommodation': _extractRows(_accommodationRows),
+        'activities': _extractRows(_activityRows),
+        'notes': _notesController.text.trim(),
+        'pdfUrls': _finalPdfUrls,
+        'state': 'to_be_visited',
+        'fcmToken': fcmToken,
+      };
+
+      // 4. Save to Firestore
+      if (widget.existingJourney != null)
+      {
+        await FirebaseFirestore.instance.collection('journeys').doc(widget.existingJourney!.id).update(journeyData);
+      } else{
+        await FirebaseFirestore.instance.collection('journeys').add(journeyData);
+    }
       print("✅ Successfully saved to Firestore!");
     } catch (e) {
       print("❌ Firebase Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
   @override
@@ -129,20 +176,55 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
     super.initState();
 
     if (widget.existingJourney != null) {
-      // 1. Fill basic name
-      _nameController = TextEditingController(text: widget.existingJourney!.name);
+      // --- WE ARE IN EDIT MODE ---
+      final j = widget.existingJourney!;
 
-      // 2. Safely handle destinations
-      // Use the '??' operator to provide an empty list if it's null
-      final savedDests = widget.existingJourney!.destinations ?? [];
+      // 1. Simple Strings
+      _nameController = TextEditingController(text: j.name);
+      _startController.text = j.startDate ?? '';
+      _endController.text = j.endDate ?? '';
+      _notesController.text = j.notes ?? '';
+      _selectedType = j.type ?? 'Travel Type';
+      // Load existing URLs into our fixed list
+      for (int i = 0; i < j.pdfUrls.length && i < 3; i++) {
+        _finalPdfUrls[i] = j.pdfUrls[i];
+      }
 
-      if (savedDests.isNotEmpty) {
-        _destControllers = savedDests.map((d) => TextEditingController(text: d.toString())).toList();
+      // Update Text to show user there is a file saved
+      if (_finalPdfUrls[0].isNotEmpty) _visaController.text = "Existing Visa PDF";
+      if (_finalPdfUrls[1].isNotEmpty) _ticketController.text = "Existing Ticket PDF";
+      if (_finalPdfUrls[2].isNotEmpty) _insuranceController.text = "Existing Insurance PDF";
+      // 2. Destinations List
+      if (j.destinations.isNotEmpty) {
+        _destControllers = j.destinations.map((d) => TextEditingController(text: d)).toList();
       } else {
         _destControllers = [TextEditingController()];
       }
+      // 3. Transportation List (Maps)
+      if (j.transportation.isNotEmpty) {
+        _transportRows = j.transportation.map((t) => {
+          'mode': t['mode'] ?? 'Airline',
+          'controller': TextEditingController(text: t['controller'] ?? '')
+        }).toList();
+      }
+      // 4. Accommodation List (Maps)
+      if (j.accommodation.isNotEmpty) {
+        _accommodationRows = j.accommodation.map((a) => {
+          'hotelName': TextEditingController(text: a['hotelName'] ?? ''),
+          'address': TextEditingController(text: a['address'] ?? ''),
+          'stayAt': a['stayAt'] ?? 'Primary Destination',
+        }).toList();
+      }
+      // 5. Activity List (Maps)
+      if (j.activities.isNotEmpty) {
+        _activityRows = j.activities.map((act) => {
+          'activity': TextEditingController(text: act['activity'] ?? ''),
+          'place': TextEditingController(text: act['place'] ?? ''),
+        }).toList();
+      }
     } else {
-      // If it's a completely new journey
+      // --- WE ARE IN ADD MODE ---
+      // (Everything stays initialized as empty defaults)
       _nameController = TextEditingController();
       _destControllers = [TextEditingController()];
     }
@@ -151,7 +233,10 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('New Journey ✈️')),
-      body: SingleChildScrollView(
+      body:Form(
+        key: _formKey,
+        child:
+        SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
@@ -159,7 +244,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
               title: "Basic Trip Details",
               child: Column(
                 children: [
-                  _buildTextField("Name your new trip", _nameController),
+                  _buildTextField("Name your new trip", _nameController, isMandatory: true),
                   const SizedBox(height: 15),
 
                   // --- DYNAMIC DESTINATIONS ---
@@ -183,8 +268,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                               _destControllers.removeAt(index);
                             }
                           });
-                        },
-                      ),
+                        }, isMandatory: true),
                     );
                   }).toList(),
 
@@ -200,7 +284,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                           icon: Icons.calendar_month,
                           onIconTap: () => _selectDate(context, _startController),
                           readOnly: true, // User must use the calendar
-                        ),
+                             isMandatory: true),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -210,6 +294,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                           icon: Icons.calendar_month,
                           onIconTap: () => _selectDate(context, _endController),
                           readOnly: true,
+                          isMandatory: true
                         ),
                       ),
                     ],
@@ -413,13 +498,11 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                     title: "Special Documents",
                     child: Column(
                       children: [
-                        _buildFilePickerRow("Passport", _passportController),
+                        _buildFilePickerRow("Visa", _visaController,0),
                         const SizedBox(height: 10),
-                        _buildFilePickerRow("Visa", _visaController),
+                        _buildFilePickerRow("Ticket", _ticketController,1),
                         const SizedBox(height: 10),
-                        _buildFilePickerRow("Ticket", _ticketController),
-                        const SizedBox(height: 10),
-                        _buildFilePickerRow("Travel Insurance", _insuranceController),
+                        _buildFilePickerRow("Travel Insurance", _insuranceController,2),
                         const SizedBox(height: 15),
 
                         const Divider(),
@@ -485,31 +568,48 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                 backgroundColor: const Color(0xFF3D5A5A),
                 minimumSize: const Size(double.infinity, 50),
               ),
-              onPressed: () {
-                // For now, returning just the trip name
-                testFirebase();
-                Navigator.pop(context, _nameController.text);
-
+              onPressed: () async {
+                if (_formKey.currentState!.validate()) {
+                  // 2. ONLY SAVE IF EVERYTHING IS VALID
+                  await saveJourney();
+                  if (mounted) {
+                    Navigator.pop(context, true);
+                  }
+                } else {
+                  // Form is invalid, Flutter will automatically highlight the empty mandatory fields in red!
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Please fill in all mandatory fields!")),
+                  );
+                }
               },
               child: Text(widget.existingJourney == null ? "Save" : "Update", style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
       ),
+      ),
+
     );
   }
-  // Updated Helper for TextFields with Icon Taps
+
   Widget _buildTextField(
       String hint,
       TextEditingController controller,
-      {IconData? icon, VoidCallback? onIconTap, Color? iconColor, bool readOnly = false}
-      ) {
-    return TextField(
+      {IconData? icon, VoidCallback? onIconTap, Color? iconColor, bool readOnly = false, bool isMandatory = false} // Added isMandatory
+      )
+  {
+    return TextFormField( // Changed from TextField to TextFormField
       controller: controller,
       readOnly: readOnly,
-      onTap: readOnly ? onIconTap : null, // Opens calendar if field is tapped
+      onTap: readOnly ? onIconTap : null,
+      validator: (value) {
+        if (isMandatory && (value == null || value.trim().isEmpty)) {
+          return 'This field is required'; // Error message shown in red
+        }
+        return null; // Null means it passed validation
+      },
       decoration: InputDecoration(
-        hintText: hint,
+        hintText: isMandatory ? "$hint *" : hint, // Add a star for mandatory fields
         hintStyle: const TextStyle(fontSize: 12),
         suffixIcon: icon != null
             ? IconButton(
@@ -588,27 +688,16 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       ),
     );
   }
-  Widget _buildFilePickerRow(String label, TextEditingController controller) {
+  Widget _buildFilePickerRow(String label, TextEditingController controller, int index) {
+    bool hasRemote = _finalPdfUrls[index].isNotEmpty;
     return Row(
       children: [
-        Expanded(
-          child: TextField(
-            controller: controller,
-            readOnly: true,
-            decoration: InputDecoration(
-              labelText: label,
-              labelStyle: const TextStyle(fontSize: 12),
-              hintText: "No file selected",
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-        ),
+        Expanded(child: _buildTextField(label, controller, readOnly: true,  icon: hasRemote ? Icons.cloud_done : Icons.picture_as_pdf)),
         const SizedBox(width: 10),
         ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3D5A5A)),
-        onPressed: () => _pickFile(controller), // Calls the logic above
-        child: const Text("Browse Files", style: TextStyle(color: Colors.white, fontSize: 11)),
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3D5A5A)),
+          onPressed: () => _pickFile(controller, index),
+          child: Text(hasRemote ? "REPLACE" : "BROWSE", style: const TextStyle(color: Colors.white, fontSize: 10)),
         ),
       ],
     );
