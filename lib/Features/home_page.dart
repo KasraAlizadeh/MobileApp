@@ -25,7 +25,7 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(
         title: const Row(
           children: [
-            Text('Home'),
+            Text('Ciao'),
             SizedBox(width: 8,),
           ],
         ),
