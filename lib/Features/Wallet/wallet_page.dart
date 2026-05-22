@@ -1,7 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'journey.dart';
 import 'journey_details.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
+
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
 
@@ -10,8 +13,37 @@ class WalletPage extends StatefulWidget {
 }
 
 class _WalletPageState extends State<WalletPage> {
-  // This list will hold our data
+  // --- STATE VARIABLES ---
   List<Journey> _trips = [];
+  bool _isLoading = true; // Shows a loading spinner while fetching data initially
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetch all journeys from Firestore right when the screen opens
+    _fetchJourneysFromFirestore();
+  }
+
+  // --- ONE-TIME FETCH LOGIC ---
+  Future<void> _fetchJourneysFromFirestore() async {
+    setState(() => _isLoading = true);
+    try {
+      QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('journeys').get();
+
+      // Convert Firestore documents into Journey objects
+      List<Journey> loadedTrips = snapshot.docs.map((doc) {
+        return Journey.fromFirestore(doc); // Ensure your journey.dart has this factory!
+      }).toList();
+
+      setState(() {
+        _trips = loadedTrips;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("Error fetching trips: $e");
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +51,6 @@ class _WalletPageState extends State<WalletPage> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('My Journeys ✈️'),
-        //centerTitle: true,
       ),
       body: Column(
         children: [
@@ -30,24 +61,22 @@ class _WalletPageState extends State<WalletPage> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF3D5A5A), // Dark Green from your image
+                backgroundColor: const Color(0xFF3D5A5A),
                 minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-                onPressed: () async {
-                  // Navigate and wait for the result
-                  final String? newTripName = await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const JourneyDetailsPage()),
-                  );
+              onPressed: () async {
+                // Navigate and wait to see if the user saved a new journey
+                final bool? didSaveNewTrip = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const JourneyDetailsPage()),
+                );
 
-                  // If we got a name back, add it to our list!
-                  if (newTripName != null && newTripName.isNotEmpty) {
-                    setState(() {
-                      _trips.add(Journey(id: DateTime.now().toString(), name: newTripName));
-                    });
-                  }
-                },
+                // If the details page returns 'true', re-fetch the data!
+                if (didSaveNewTrip == true) {
+                  _fetchJourneysFromFirestore();
+                }
+              },
               child: const Text('Add a new journey', style: TextStyle(color: Colors.white)),
             ),
           ),
@@ -62,7 +91,9 @@ class _WalletPageState extends State<WalletPage> {
 
           // --- THE LIST OR EMPTY MESSAGE ---
           Expanded(
-            child: _trips.isEmpty
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A)))
+                : _trips.isEmpty
                 ? _buildEmptyState()
                 : _buildTripList(),
           ),
@@ -71,7 +102,6 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 
-  // A helper method for the empty text you requested
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -85,21 +115,19 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 
-  // A helper method to build the scrollable list
   Widget _buildTripList() {
     return ListView.builder(
       itemCount: _trips.length,
       itemBuilder: (context, index) {
         bool isDark = index % 2 != 0;
+        final journey = _trips[index];
 
-        // --- WRAP EVERYTHING IN SLIDABLE ---
         return Slidable(
-          key: ValueKey(_trips[index].id), // Unique key for each trip
+          key: ValueKey(journey.id),
           endActionPane: ActionPane(
-            extentRatio: 0.4, // Limits how far it slides (adjust as needed)
+            extentRatio: 0.4,
             motion: const ScrollMotion(),
             children: [
-              // EDIT BUTTON
               SlidableAction(
                 onPressed: (context) => _showConfirmDialog(context, "Edit", index),
                 backgroundColor: const Color(0xFF3D5A5A),
@@ -107,7 +135,6 @@ class _WalletPageState extends State<WalletPage> {
                 icon: Icons.edit,
                 borderRadius: BorderRadius.circular(8),
               ),
-              // DELETE BUTTON
               SlidableAction(
                 onPressed: (context) => _showConfirmDialog(context, "Delete", index),
                 backgroundColor: Colors.red.shade900,
@@ -117,8 +144,6 @@ class _WalletPageState extends State<WalletPage> {
               ),
             ],
           ),
-
-          // This is the actual tile that users see before sliding
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
             decoration: BoxDecoration(
@@ -127,11 +152,12 @@ class _WalletPageState extends State<WalletPage> {
             ),
             child: ListTile(
               title: Text(
-                _trips[index].name,
+                journey.name,
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               ),
               onTap: () {
-                // TODO: Navigate to view details page when clicked
+                // TODO: Navigate to view-only details page
+                // e.g. Navigator.push(context, MaterialPageRoute(builder: (_) => JourneyViewPage(journey: journey)));
               },
             ),
           ),
@@ -139,10 +165,11 @@ class _WalletPageState extends State<WalletPage> {
       },
     );
   }
+
   void _showConfirmDialog(BuildContext context, String action, int index) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) { // Renamed context to dialogContext for safety
         bool isDelete = action == "Delete";
 
         return AlertDialog(
@@ -154,7 +181,7 @@ class _WalletPageState extends State<WalletPage> {
               const SizedBox(height: 10),
               Text(
                 isDelete
-                    ? "Are you sure you want to delete this trip?"
+                    ? "Are you sure you want to delete this trip and its files?"
                     : "Are you sure you want to edit this trip?",
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontWeight: FontWeight.w500),
@@ -163,24 +190,21 @@ class _WalletPageState extends State<WalletPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // --- CANCEL BUTTON ---
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF3D5A5A),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(dialogContext),
                     child: const Text("Cancel", style: TextStyle(color: Colors.white)),
                   ),
-
-                  // --- ACTION BUTTON (Edit or Delete) ---
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isDelete ? Colors.red.shade900 : const Color(0xFFD1D9D1),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onPressed: () {
-                      Navigator.pop(context); // Close the dialog
+                      Navigator.pop(dialogContext); // Close the dialog
                       if (isDelete) {
                         _handleDelete(index);
                       } else {
@@ -200,37 +224,57 @@ class _WalletPageState extends State<WalletPage> {
       },
     );
   }
-// DELETE LOGIC
-  void _handleDelete(int index) {
-    String tripId = _trips[index].id;
 
+  // --- BACKGROUND DELETE LOGIC (Zero Cost UI Update) ---
+  Future<void> _handleDelete(int index) async {
+    Journey tripToDelete = _trips[index];
+
+    // 1. Instantly remove from UI so it feels lightning fast for the user
     setState(() {
       _trips.removeAt(index);
     });
 
-    // TODO: Add Firebase deletion here
-    // FirebaseFirestore.instance.collection('journeys').doc(tripId).delete();
+    try {
+      // 2. Background Task: Delete all connected PDFs in Firebase Storage
+      if (tripToDelete.pdfUrls.isNotEmpty) {
+        for (String url in tripToDelete.pdfUrls) {
+          await FirebaseStorage.instance.refFromURL(url).delete();
+        }
+      }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Trip deleted successfully")),
-    );
+      // 3. Background Task: Delete the Firestore document
+      await FirebaseFirestore.instance.collection('journeys').doc(tripToDelete.id).delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Trip and files deleted successfully")),
+        );
+      }
+    } catch (e) {
+      // 4. If something fails (e.g. no internet), put it back in the list!
+      if (mounted) {
+        setState(() {
+          _trips.insert(index, tripToDelete);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error deleting trip: $e")),
+        );
+      }
+    }
   }
 
-// EDIT LOGIC
-  void _handleEdit(int index) {
-    Navigator.push(
+  // --- EDIT LOGIC ---
+  Future<void> _handleEdit(int index) async {
+    final bool? didUpdate = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => JourneyDetailsPage(
-          existingJourney: _trips[index], // Pass the existing trip to the page
-        ),
+        builder: (context) => JourneyDetailsPage(existingJourney: _trips[index]),
       ),
-    ).then((updatedTrip) {
-      if (updatedTrip != null) {
-        setState(() {
-          _trips[index] = updatedTrip; // Update the list with edited info
-        });
-      }
-    });
+    );
+
+    // If the edit page successfully saved, re-fetch to get the fresh data
+    if (didUpdate == true) {
+      _fetchJourneysFromFirestore();
+    }
   }
 }
