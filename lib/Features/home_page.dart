@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../Models/destination.dart';
 
 class HomePage extends StatelessWidget {
-  HomePage({super.key});
+  const HomePage({super.key});
 
   Future<String> _getImageUrl(String imagePath) async {
     if (imagePath.startsWith('assets/')) {
@@ -26,7 +27,6 @@ class HomePage extends StatelessWidget {
           children: [
             Text('Home'),
             SizedBox(width: 8,),
-            Icon(Icons.airplanemode_active, color: Colors.black, size: 30,),
           ],
         ),
       ),
@@ -34,10 +34,14 @@ class HomePage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Section 1: Visited (Rectangles)
             SizedBox(
               height: 250,
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('destinations').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('destinations')
+                    .where('state', isEqualTo: DestinationState.visited.value)
+                    .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return const Center(child: Text('Error loading data'));
@@ -50,7 +54,7 @@ class HomePage extends StatelessWidget {
                   final docs = snapshot.data!.docs;
 
                   if (docs.isEmpty) {
-                    return const Center(child: Text('No destination found'));
+                    return const Center(child: Text('No visited destinations found'));
                   }
 
                   return ListView.builder(
@@ -58,13 +62,13 @@ class HomePage extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     itemCount: docs.length,
                     itemBuilder: (context, index) {
-                      final data = docs[index].data() as Map<String, dynamic>;
-                      final name = data['name'] ?? 'No name';
-                      final imagePath = data['image'] ?? '';
-                      final description = data['description'] ?? 'No description';
+                      final destination = Destination.fromFirestore(
+                        docs[index].id,
+                        docs[index].data() as Map<String, dynamic>,
+                      );
 
                       return FutureBuilder<String>(
-                        future: _getImageUrl(imagePath),
+                        future: _getImageUrl(destination.image),
                         builder: (context, urlSnapshot) {
                           return Container(
                             width: MediaQuery.of(context).size.width * 0.4,
@@ -95,7 +99,7 @@ class HomePage extends StatelessWidget {
                                       color: Colors.transparent,
                                       child: InkWell(
                                         onTap: () {
-                                          _showDestinationDetails(context, name, description);
+                                          _showDestinationDetails(context, destination);
                                         },
                                       ),
                                     ),
@@ -106,11 +110,12 @@ class HomePage extends StatelessWidget {
                           );
                         },
                       );
-                    },
+                    }
                   );
                 },
               ),
             ),
+            
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
               child: Text(
@@ -118,26 +123,202 @@ class HomePage extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
-            Container(
-              height: 250,
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
+            
+            // Section 2: Not Visited (Bubbles)
+            SizedBox(
+              height: 200, // Increased height to accommodate labels better
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('destinations')
+                    .where('state', isEqualTo: DestinationState.notVisited.value)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(child: Text('Error loading data'));
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final docs = snapshot.data!.docs;
+
+                  if (docs.isEmpty) {
+                    return const Center(child: Text('No places found'));
+                  }
+
+                  return ListView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final destination = Destination.fromFirestore(
+                        docs[index].id,
+                        docs[index].data() as Map<String, dynamic>,
+                      );
+
+                      return FutureBuilder<String>(
+                        future: _getImageUrl(destination.image),
+                        builder: (context, urlSnapshot) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      width: 3,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.1),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 5),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: _buildImageWidget(urlSnapshot),
+                                        ),
+                                        Positioned.fill(
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: () {
+                                                _showDestinationDetails(context, destination);
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  destination.name,
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
               ),
-              child: const Center(
-                child: Icon(
-                  Icons.map_outlined,
-                  color: Colors.white,
-                  size: 50,
-                ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              child: Text(
+                "Still to be visited...",
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+
+            // Section 3: To Be Visited (Bubbles)
+            SizedBox(
+              height: 200,
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('destinations')
+                    .where('state', isEqualTo: DestinationState.toBeVisited.value)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(child: Text('Error loading data'));
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final docs = snapshot.data!.docs;
+
+                  if (docs.isEmpty) {
+                    return const Center(child: Text('No destinations to be visited'));
+                  }
+
+                  return ListView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final destination = Destination.fromFirestore(
+                        docs[index].id,
+                        docs[index].data() as Map<String, dynamic>,
+                      );
+
+                      return FutureBuilder<String>(
+                        future: _getImageUrl(destination.image),
+                        builder: (context, urlSnapshot) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      width: 3,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.1),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 5),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: _buildImageWidget(urlSnapshot),
+                                        ),
+                                        Positioned.fill(
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: () {
+                                                _showDestinationDetails(context, destination);
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  destination.name,
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
@@ -146,7 +327,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  void _showDestinationDetails(BuildContext context, String name, String description) {
+  void _showDestinationDetails(BuildContext context, Destination destination) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -160,14 +341,14 @@ class HomePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                name,
+                destination.name,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                description,
+                destination.description,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               const SizedBox(height: 24),
