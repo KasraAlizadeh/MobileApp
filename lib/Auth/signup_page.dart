@@ -1,27 +1,83 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../main.dart';
 
-class SignUpPage extends StatelessWidget {
-  SignUpPage({super.key});
+class SignUpPage extends StatefulWidget {
+  const SignUpPage({super.key});
 
+  @override
+  State<SignUpPage> createState() => _SignUpPageState();
+}
+
+class _SignUpPageState extends State<SignUpPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
 
-  void _register(BuildContext context) {
-    final email = _emailController.text;
+  Future<void> _register() async {
+    final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Compila tutti i campi")),
+        const SnackBar(content: Text("All the fields must be compiled")),
       );
       return;
     }
 
-    // Qui "simuliamo" la registrazione
-    Navigator.pop(context, {
-      "email": email,
-      "password": password
+    setState(() {
+      _isLoading = true;
     });
+
+    try {
+      // Interface with firebase to create the user
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      // Registration successful, go to MainPage and clear stack
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const MainPage(title: "Welcome"),
+        ),
+        (route) => false,
+      );
+
+    } on FirebaseAuthException catch (e) {
+      String message = "Error";
+      if (e.code == 'weak-password') {
+        message = "The password is too weak";
+      } else if (e.code == 'email-already-in-use') {
+        message = "The email is already in use";
+      } else if (e.code == 'invalid-email') {
+        message = "The email is invalid";
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Generic error: ${e.toString()}")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -35,18 +91,32 @@ class SignUpPage extends StatelessWidget {
           children: [
             TextField(
               controller: _emailController,
-              decoration: const InputDecoration(labelText: "Email"),
+              decoration: const InputDecoration(
+                labelText: "Email",
+                prefixIcon: Icon(Icons.email),
+              ),
+              keyboardType: TextInputType.emailAddress,
             ),
+            const SizedBox(height: 10),
             TextField(
               controller: _passwordController,
-              decoration: const InputDecoration(labelText: "Password"),
+              decoration: const InputDecoration(
+                labelText: "Password",
+                prefixIcon: Icon(Icons.lock),
+              ),
               obscureText: true,
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _register(context),
-              child: const Text("Crea account"),
-            ),
+            const SizedBox(height: 30),
+            _isLoading 
+              ? const CircularProgressIndicator()
+              : SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _register,
+                    child: const Text("Crea account", style: TextStyle(color: Colors.white),),
+                  ),
+                ),
           ],
         ),
       ),

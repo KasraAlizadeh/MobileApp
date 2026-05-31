@@ -1,15 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:travel_app/Auth/login_page.dart';
+import 'package:travel_app/Auth/signup_page.dart';
 
 class PresentationPage extends StatelessWidget {
   PresentationPage({super.key});
 
+  // Change current page to login page
   void _go_to_login(BuildContext context) {
+    Navigator.pushReplacement( //without the possibility to go back
+      context, //where is the widget inside the application components' tree => what page to substitute
+      MaterialPageRoute( //it handles the animation between the two pages
+        builder: (context) => LoginPage(),
+      ),
+    );
+  }
+
+  // Change current page to signup page
+  void _go_to_signup(BuildContext context) {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => LoginPage(),
+        builder: (context) => SignUpPage(),
       ),
     );
   }
@@ -74,19 +86,30 @@ class PresentationPage extends StatelessWidget {
                 ),
                 Spacer(),
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
                       onPressed: () => _go_to_login(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFF84a98c),
-                        //padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)
+                      style: Theme.of(context).elevatedButtonTheme.style,
+                      child: const Text(
+                        'Log in',
+                        style: TextStyle(
+                            color: Colors.white
                         ),
                       ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: () => _go_to_signup(context),
+                      style: Theme.of(context).outlinedButtonTheme.style,
                       child: const Text(
                         'Create an account',
                         style: TextStyle(
