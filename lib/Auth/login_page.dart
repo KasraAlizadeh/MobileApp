@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import 'signup_page.dart';
+import '../Services/dialog_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -21,9 +22,7 @@ class _LoginPageState extends State<LoginPage> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Inserisci email e password")),
-      );
+      DialogService.showErrorDialog(context, "Inserisci email e password");
       return;
     }
 
@@ -57,13 +56,9 @@ class _LoginPageState extends State<LoginPage> {
         message = "This account is disabled";
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      DialogService.showErrorDialog(context, message);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Unexpected error")),
-      );
+      DialogService.showErrorDialog(context, "Unexpected error");
     } finally {
       if (mounted) {
         setState(() {
@@ -131,9 +126,7 @@ class _LoginPageState extends State<LoginPage> {
                   _emailController.text = result["email"] ?? "";
                   _passwordController.text = result["password"] ?? "";
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Registration completed, now you can access")),
-                  );
+                  DialogService.showSuccessSnackBar(context, "Registration completed, now you can access");
                 }
               },
               child: const Text("No account yet? Sign up"),

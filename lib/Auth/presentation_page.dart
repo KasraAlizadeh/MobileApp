@@ -8,20 +8,19 @@ class PresentationPage extends StatelessWidget {
 
   // Change current page to login page
   void _go_to_login(BuildContext context) {
-    Navigator.pushReplacement( //without the possibility to go back
-      context, //where is the widget inside the application components' tree => what page to substitute
-      MaterialPageRoute( //it handles the animation between the two pages
-        builder: (context) => LoginPage(),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LoginPage(),
       ),
     );
   }
 
-  // Change current page to signup page
   void _go_to_signup(BuildContext context) {
-    Navigator.pushReplacement(
+    Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => SignUpPage(),
+        builder: (context) => const SignUpPage(),
       ),
     );
   }

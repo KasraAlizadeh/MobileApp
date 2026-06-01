@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../main.dart';
+import '../Services/dialog_service.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -10,18 +11,25 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
 
   Future<void> _register() async {
+    final username = _usernameController.text;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
 
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("All the fields must be compiled")),
-      );
+    if (username.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+      DialogService.showErrorDialog(context, "All the fields must be compiled");
+      return;
+    }
+
+    if (password != confirmPassword) {
+      DialogService.showErrorDialog(context, "Passwords do not match");
       return;
     }
 
@@ -31,10 +39,13 @@ class _SignUpPageState extends State<SignUpPage> {
 
     try {
       // Interface with firebase to create the user
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      // Save the username in the Firebase user profile
+      await userCredential.user?.updateDisplayName(username);
 
       if (!mounted) return;
 
@@ -57,13 +68,9 @@ class _SignUpPageState extends State<SignUpPage> {
         message = "The email is invalid";
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      DialogService.showErrorDialog(context, message);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Generic error: ${e.toString()}")),
-      );
+      DialogService.showErrorDialog(context, "Generic error: ${e.toString()}");
     } finally {
       if (mounted) {
         setState(() {
@@ -75,8 +82,10 @@ class _SignUpPageState extends State<SignUpPage> {
 
   @override
   void dispose() {
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -89,6 +98,14 @@ class _SignUpPageState extends State<SignUpPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            TextField(
+              controller: _usernameController,
+              decoration: const InputDecoration(
+                labelText: "Username",
+                prefixIcon: Icon(Icons.person),
+              ),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: _emailController,
               decoration: const InputDecoration(
@@ -106,6 +123,15 @@ class _SignUpPageState extends State<SignUpPage> {
               ),
               obscureText: true,
             ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _confirmPasswordController,
+              decoration: const InputDecoration(
+                labelText: "Confirm Password",
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+              obscureText: true,
+            ),
             const SizedBox(height: 30),
             _isLoading 
               ? const CircularProgressIndicator()
@@ -114,7 +140,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: _register,
-                    child: const Text("Crea account", style: TextStyle(color: Colors.white),),
+                    child: const Text("Create account", style: TextStyle(color: Colors.white),),
                   ),
                 ),
           ],
