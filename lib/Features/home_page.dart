@@ -8,9 +8,6 @@ class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   Future<String> _getImageUrl(String imagePath) async {
-    if (imagePath.startsWith('assets/')) {
-      return imagePath;
-    }
     try {
       return await FirebaseStorage.instance.ref(imagePath).getDownloadURL();
     } catch (e) {
@@ -370,21 +367,18 @@ class HomePage extends StatelessWidget {
     if (snapshot.connectionState == ConnectionState.waiting) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
       return const Center(child: Icon(Icons.broken_image, color: Colors.grey));
     }
 
     final String path = snapshot.data!;
-    if (path.startsWith('assets/')) {
-      return Image.asset(path, fit: BoxFit.cover);
-    } else {
-      return CachedNetworkImage(
-        imageUrl: path,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => const Icon(Icons.error),
-      );
-    }
+
+    return CachedNetworkImage(
+      imageUrl: path,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+      errorWidget: (context, url, error) => const Icon(Icons.error),
+    );
   }
 }
