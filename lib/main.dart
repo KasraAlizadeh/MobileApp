@@ -20,6 +20,13 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   await NotificationService.initialize();
+
+  AwesomeNotifications().setListeners(
+    onActionReceivedMethod: onActionReceivedMethod, // Points directly to top-level function
+    onNotificationCreatedMethod: (ReceivedNotification receivedNotification) async {},
+    onNotificationDisplayedMethod: (ReceivedNotification receivedNotification) async {},
+    onDismissActionReceivedMethod: (ReceivedAction receivedAction) async {},
+  );
   runApp(const MyApp());
 }
 
