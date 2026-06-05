@@ -32,20 +32,32 @@ class AppTheme {
       showSelectedLabels: true,
       showUnselectedLabels: false,
     ),
-    useMaterial3: true,
-  );
-  static final theme2 = ThemeData(
-    colorScheme: ColorScheme.fromSeed(seedColor: Colors.black),
-    useMaterial3: true,
-  );
-  static final theme3 = ThemeData(
-    colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Color(0xFF84a98c),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12)
+        ),
+        textStyle: TextStyle(
+          color: Colors.white,
+        )
+      )
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: Color(0xFF84a98c)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12)
+        ),
+        textStyle: TextStyle(
+          color: Colors.white,
+        )
+      ),
+    ),
     useMaterial3: true,
   );
 
   static final List<ThemeData> themes = [
     theme1,
-    theme2,
-    theme3,
   ];
 }

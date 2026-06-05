@@ -3,14 +3,12 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../Models/destination.dart';
+// import '../Services/google_places_service.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   Future<String> _getImageUrl(String imagePath) async {
-    if (imagePath.startsWith('assets/')) {
-      return imagePath;
-    }
     try {
       return await FirebaseStorage.instance.ref(imagePath).getDownloadURL();
     } catch (e) {
@@ -19,13 +17,27 @@ class HomePage extends StatelessWidget {
     }
   }
 
+  // Future<void> _addNewDestination(String name) async {
+  //   final cleanName = name.split(',')[0];
+  //
+  //   await FirebaseFirestore.instance.collection('destinations').add({
+  //     'name': cleanName,
+  //     'description': 'Destinazione programmata tramite Google Places API.',
+  //     'state': DestinationState.toBeVisited.value,
+  //     'image': 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800',
+  //   });
+  // }
+
   @override
   Widget build(BuildContext context) {
+
+    //final GooglePlacesService placesService = GooglePlacesService();
+
     return Scaffold(
       appBar: AppBar(
         title: const Row(
           children: [
-            Text('Home'),
+            Text('Ciao'),
             SizedBox(width: 8,),
           ],
         ),
@@ -34,6 +46,55 @@ class HomePage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Padding(
+            //   padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+            //   child: SearchAnchor(
+            //     builder: (BuildContext context, SearchController controller) {
+            //       return SearchBar(
+            //         controller: controller,
+            //         padding: const WidgetStatePropertyAll<EdgeInsets>(
+            //           EdgeInsets.symmetric(horizontal: 16.0),
+            //         ),
+            //         onTap: () {
+            //           controller.openView(); // Apre la schermata di suggerimento quando si clicca
+            //         },
+            //         onChanged: (_) {
+            //           controller.openView();
+            //         },
+            //         leading: const Icon(Icons.search),
+            //         hintText: 'Cerca una città in Italia...',
+            //       );
+            //     },
+            //     suggestionsBuilder: (BuildContext context, SearchController controller) async {
+            //       if (controller.text.length < 3) {
+            //         return const [
+            //           Center(
+            //             child: Padding(
+            //               padding: EdgeInsets.all(16.0),
+            //               child: Text('Digita almeno 3 caratteri...'),
+            //             ),
+            //           )
+            //         ];
+            //       }
+            //
+            //       final results = await placesService.getSuggestions(controller.text);
+            //
+            //       return results.map((place) => ListTile(
+            //         leading: const Icon(Icons.location_city),
+            //         title: Text(place['description']),
+            //         onTap: () async {
+            //           controller.closeView(place['description']);
+            //
+            //           ScaffoldMessenger.of(context).showSnackBar(
+            //             SnackBar(content: Text('Aggiungo ${place['description']}...')),
+            //           );
+            //
+            //           await _addNewDestination(place['description']);
+            //         },
+            //       )).toList();
+            //     },
+            //   ),
+            // ),
             // Section 1: Visited (Rectangles)
             SizedBox(
               height: 250,
@@ -124,7 +185,7 @@ class HomePage extends StatelessWidget {
               ),
             ),
             
-            // Section 2: Not Visited (Bubbles)
+            // Section 2: Not Visited
             SizedBox(
               height: 200, // Increased height to accommodate labels better
               child: StreamBuilder<QuerySnapshot>(
@@ -227,7 +288,7 @@ class HomePage extends StatelessWidget {
               ),
             ),
 
-            // Section 3: To Be Visited (Bubbles)
+            // Section 3: To Be Visited
             SizedBox(
               height: 200,
               child: StreamBuilder<QuerySnapshot>(
@@ -370,21 +431,18 @@ class HomePage extends StatelessWidget {
     if (snapshot.connectionState == ConnectionState.waiting) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
       return const Center(child: Icon(Icons.broken_image, color: Colors.grey));
     }
 
     final String path = snapshot.data!;
-    if (path.startsWith('assets/')) {
-      return Image.asset(path, fit: BoxFit.cover);
-    } else {
-      return CachedNetworkImage(
-        imageUrl: path,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => const Icon(Icons.error),
-      );
-    }
+
+    return CachedNetworkImage(
+      imageUrl: path,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+      errorWidget: (context, url, error) => const Icon(Icons.error),
+    );
   }
 }
