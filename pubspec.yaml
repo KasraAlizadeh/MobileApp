@@ -46,6 +46,10 @@ dependencies:
   cloud_firestore: ^6.4.1
   firebase_storage: ^13.4.1
   cached_network_image: ^3.4.1
+  flutter_map: ^8.3.0
+  latlong2: ^0.9.1
+  geocoding: ^4.0.0
+  google_generative_ai: ^0.4.7
 
 dev_dependencies:
   flutter_test:
