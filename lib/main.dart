@@ -13,7 +13,7 @@ import 'Features/Wallet/wallet_page.dart';
 import 'Features/profile_page.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'Services/notification_service.dart';
-
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -27,6 +27,7 @@ void main() async {
     onNotificationDisplayedMethod: (ReceivedNotification receivedNotification) async {},
     onDismissActionReceivedMethod: (ReceivedAction receivedAction) async {},
   );
+  await dotenv.load(fileName: ".env");
   runApp(const MyApp());
 }
 

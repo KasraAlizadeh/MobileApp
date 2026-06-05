@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+String apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -40,7 +42,7 @@ class _SearchPageState extends State<SearchPage> {
 
       final model = GenerativeModel(
         model: 'gemini-2.5-flash',
-        apiKey: 'AQ.Ab8RN6JgR-oHA7kFn0BhinVPtrmA0kdFsnpPGuUAbaIKKl0r4g',
+        apiKey: apiKey,
       );
 
       // giving a testing prompt to generate a response

@@ -51,6 +51,7 @@ dependencies:
   latlong2: ^0.9.1
   geocoding: ^4.0.0
   google_generative_ai: ^0.4.7
+  flutter_dotenv: ^6.0.1
 
 dev_dependencies:
   flutter_test:
@@ -79,6 +80,7 @@ flutter:
   #   - images/a_dot_ham.jpeg
   assets:
     - assets/icons/globe.svg
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
