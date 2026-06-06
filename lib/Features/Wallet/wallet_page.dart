@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import '../../Services/notification_service.dart';
 import 'journey.dart';
 import 'journey_details.dart';
 
@@ -80,7 +81,33 @@ class _WalletPageState extends State<WalletPage> {
               child: const Text('Add a new journey', style: TextStyle(color: Colors.white)),
             ),
           ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade800,
+                minimumSize: const Size(double.infinity, 45),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.flash_on, color: Colors.white),
+              label: const Text('⚡ FORCE NOTIFICATION NOW', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              onPressed: () async {
+                print("🚀 Forcing local notification trigger...");
 
+                // If you have journeys loaded, pass the actual ID of the first item
+                // to test real database modifications; otherwise, use a fallback string.
+                String testJourneyId = _trips.isNotEmpty ? _trips.first.id : "test_journey_id_123";
+                String testJourneyName = _trips.isNotEmpty ? _trips.first.name : "Test Trip to Rome";
+
+                // This triggers your service layout instantly
+                await NotificationService.showTripNotification(
+                    testJourneyId,
+                    testJourneyName
+                );
+              },
+            ),
+          ),
           const Padding(
             padding: EdgeInsets.all(20.0),
             child: Align(
@@ -277,4 +304,5 @@ class _WalletPageState extends State<WalletPage> {
       _fetchJourneysFromFirestore();
     }
   }
+
 }
