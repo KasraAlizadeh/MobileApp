@@ -8,30 +8,29 @@ import 'journey_details.dart';
 
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
-
   @override
   State<WalletPage> createState() => _WalletPageState();
 }
 
 class _WalletPageState extends State<WalletPage> {
-  // --- STATE VARIABLES ---
+  // state viariables
   List<Journey> _trips = [];
-  bool _isLoading = true; // Shows a loading spinner while fetching data initially
+  bool _isLoading = true; // loading spinner while fetching data initially
 
   @override
   void initState() {
     super.initState();
-    // Fetch all journeys from Firestore right when the screen opens
+    // fetch all journeys from Firestore right when the screen opens
     _fetchJourneysFromFirestore();
   }
 
-  // --- ONE-TIME FETCH LOGIC ---
+  // one time fetch logic
   Future<void> _fetchJourneysFromFirestore() async {
     setState(() => _isLoading = true);
     try {
       QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('journeys').get();
 
-      // Convert Firestore documents into Journey objects
+      // convert Firestore documents into Journey objects
       List<Journey> loadedTrips = snapshot.docs.map((doc) {
         return Journey.fromFirestore(doc); // Ensure your journey.dart has this factory!
       }).toList();
@@ -57,7 +56,7 @@ class _WalletPageState extends State<WalletPage> {
         children: [
           const SizedBox(height: 20),
 
-          // --- ADD BUTTON ---
+          // add button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: ElevatedButton(
@@ -73,7 +72,7 @@ class _WalletPageState extends State<WalletPage> {
                   MaterialPageRoute(builder: (context) => const JourneyDetailsPage()),
                 );
 
-                // If the details page returns 'true', re-fetch the data!
+                // if the details page returns 'true', re-fetch the data!
                 if (didSaveNewTrip == true) {
                   _fetchJourneysFromFirestore();
                 }
@@ -95,7 +94,7 @@ class _WalletPageState extends State<WalletPage> {
               onPressed: () async {
                 print("🚀 Forcing local notification trigger...");
 
-                // If you have journeys loaded, pass the actual ID of the first item
+                // If we have journeys loaded, pass the actual ID of the first item
                 // to test real database modifications; otherwise, use a fallback string.
                 String testJourneyId = _trips.isNotEmpty ? _trips.first.id : "test_journey_id_123";
                 String testJourneyName = _trips.isNotEmpty ? _trips.first.name : "Test Trip to Rome";
@@ -116,7 +115,7 @@ class _WalletPageState extends State<WalletPage> {
             ),
           ),
 
-          // --- THE LIST OR EMPTY MESSAGE ---
+          // handling list or empty messages
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A)))
@@ -183,8 +182,16 @@ class _WalletPageState extends State<WalletPage> {
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               ),
               onTap: () {
-                // TODO: Navigate to view-only details page
-                // e.g. Navigator.push(context, MaterialPageRoute(builder: (_) => JourneyViewPage(journey: journey)));
+                // Navigate to view-only details page
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => JourneyDetailsPage(
+                      existingJourney: journey, // Pass your trip item reference object
+                      isReadOnly: true,         // Tells the page to lock down as retrieval-only!
+                    ),
+                  ),
+                );
               },
             ),
           ),
@@ -252,24 +259,24 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 
-  // --- BACKGROUND DELETE LOGIC (Zero Cost UI Update) ---
+  // background delete logic
   Future<void> _handleDelete(int index) async {
     Journey tripToDelete = _trips[index];
 
-    // 1. Instantly remove from UI so it feels lightning fast for the user
+    // instantly remove from UI so it feels lightning fast for the user
     setState(() {
       _trips.removeAt(index);
     });
 
     try {
-      // 2. Background Task: Delete all connected PDFs in Firebase Storage
+      // background Task: Delete all connected PDFs in Firebase Storage
       if (tripToDelete.pdfUrls.isNotEmpty) {
         for (String url in tripToDelete.pdfUrls) {
           await FirebaseStorage.instance.refFromURL(url).delete();
         }
       }
 
-      // 3. Background Task: Delete the Firestore document
+      // background Task: Delete the Firestore document
       await FirebaseFirestore.instance.collection('journeys').doc(tripToDelete.id).delete();
 
       if (mounted) {
@@ -278,7 +285,7 @@ class _WalletPageState extends State<WalletPage> {
         );
       }
     } catch (e) {
-      // 4. If something fails (e.g. no internet), put it back in the list!
+      // if something fails, put it back in the list!
       if (mounted) {
         setState(() {
           _trips.insert(index, tripToDelete);
@@ -290,7 +297,7 @@ class _WalletPageState extends State<WalletPage> {
     }
   }
 
-  // --- EDIT LOGIC ---
+  //eidt loigc
   Future<void> _handleEdit(int index) async {
     final bool? didUpdate = await Navigator.push(
       context,
@@ -299,7 +306,7 @@ class _WalletPageState extends State<WalletPage> {
       ),
     );
 
-    // If the edit page successfully saved, re-fetch to get the fresh data
+    // if the edit page successfully saved, re-fetch to get the fresh data
     if (didUpdate == true) {
       _fetchJourneysFromFirestore();
     }
