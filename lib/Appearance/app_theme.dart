@@ -12,7 +12,7 @@ class AppTheme {
       toolbarHeight: 80,
       titleTextStyle: TextStyle(
         fontFamily: 'montserrat',
-        fontSize: 50,
+        fontSize: 30,
         fontWeight: FontWeight.bold,
         color: brandGreen,
       )

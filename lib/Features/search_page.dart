@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+
 String apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -39,7 +40,6 @@ class _SearchPageState extends State<SearchPage> {
 
     try {
       // Initialize the Gemini Model (here i go with gemini 2.5 model)
-
       final model = GenerativeModel(
         model: 'gemini-2.5-flash',
         apiKey: apiKey,
@@ -70,8 +70,7 @@ class _SearchPageState extends State<SearchPage> {
       }
 
     } catch (err) {
-      // 6. CATCH BLOCKS PREVENT CRASHES: If the network drops or the key fails, the UI handles it gracefully
-      print("AI Agent Error: $err");
+      print("AI Agent Error: $err"); //just for checking
       setState(() {
         _aiResponseTitle = "AI Assistant Offline ❌";
         _aiRecommendations = [
@@ -106,7 +105,7 @@ class _SearchPageState extends State<SearchPage> {
                 height: 80.0,
                 child: GestureDetector(
                   onTap: () {
-                    // Clicking a pin automatically feeds that city to our AI Assistant!
+                    // clicking a pin automatically feeds that city to our AI Assistant!
                     _aiSearchController.text = cityName;
                     _askAiAgent(cityName);
 
@@ -152,7 +151,7 @@ class _SearchPageState extends State<SearchPage> {
 
           return Column(
             children: [
-              // 🗺️ SECTION 1: MAP VIEW (Takes 55% of the screen space)
+              // map view
               Expanded(
                 flex: 55,
                 child: FutureBuilder<List<Marker>>(
@@ -175,7 +174,7 @@ class _SearchPageState extends State<SearchPage> {
                 ),
               ),
 
-              // 🧠 SECTION 2: AI AGENT CONTROL PANEL (Takes 45% of the screen space)
+              // ai agent cntrol panel
               Expanded(
                 flex: 45,
                 child: Container(
