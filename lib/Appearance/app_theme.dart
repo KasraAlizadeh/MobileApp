@@ -23,6 +23,11 @@ class AppTheme {
         fontWeight: FontWeight.bold,
         color: brandGreen,
       ),
+      titleMedium: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: brandGreen,
+      ),
     ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: Colors.transparent,

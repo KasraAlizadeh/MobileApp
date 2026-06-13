@@ -1,135 +1,89 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../Models/destination.dart';
-// import '../Services/google_places_service.dart';
+import '../Services/google_places_service.dart';
+import '../Services/location_service.dart';
+import 'Wallet/journey.dart';
+import 'Wallet/journey_details.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
-  Future<String> _getImageUrl(String imagePath) async {
-    try {
-      return await FirebaseStorage.instance.ref(imagePath).getDownloadURL();
-    } catch (e) {
-      debugPrint('Error fetching image $imagePath: $e');
-      return '';
-    }
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final LocationService _locationService = LocationService();
+  final GooglePlacesService _placesService = GooglePlacesService();
+  late Future<List<String>> _suggestedCitiesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _suggestedCitiesFuture = _getSuggestedCities();
   }
 
-  // Future<void> _addNewDestination(String name) async {
-  //   final cleanName = name.split(',')[0];
-  //
-  //   await FirebaseFirestore.instance.collection('destinations').add({
-  //     'name': cleanName,
-  //     'description': 'Destinazione programmata tramite Google Places API.',
-  //     'state': DestinationState.toBeVisited.value,
-  //     'image': 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800',
-  //   });
-  // }
+  Future<String> _getPlaceImage(String cityName) async {
+    return await _placesService.getPlacePhotoUrl(cityName) ?? '';
+  }
+
+  Future<List<String>> _getSuggestedCities() async {
+    final position = await _locationService.getCurrentLocation();
+    if (position != null) {
+      return await _placesService.getNearbyCities(
+        position.latitude,
+        position.longitude,
+      );
+    }
+    return [];
+  }
 
   @override
   Widget build(BuildContext context) {
-
-    //final GooglePlacesService placesService = GooglePlacesService();
-
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          children: [
-            Text('Home'),
-            SizedBox(width: 8,),
-          ],
+        title: const Text(
+          'Home',
+          overflow: TextOverflow.ellipsis,
         ),
       ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Padding(
-            //   padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
-            //   child: SearchAnchor(
-            //     builder: (BuildContext context, SearchController controller) {
-            //       return SearchBar(
-            //         controller: controller,
-            //         padding: const WidgetStatePropertyAll<EdgeInsets>(
-            //           EdgeInsets.symmetric(horizontal: 16.0),
-            //         ),
-            //         onTap: () {
-            //           controller.openView(); // Apre la schermata di suggerimento quando si clicca
-            //         },
-            //         onChanged: (_) {
-            //           controller.openView();
-            //         },
-            //         leading: const Icon(Icons.search),
-            //         hintText: 'Cerca una città in Italia...',
-            //       );
-            //     },
-            //     suggestionsBuilder: (BuildContext context, SearchController controller) async {
-            //       if (controller.text.length < 3) {
-            //         return const [
-            //           Center(
-            //             child: Padding(
-            //               padding: EdgeInsets.all(16.0),
-            //               child: Text('Digita almeno 3 caratteri...'),
-            //             ),
-            //           )
-            //         ];
-            //       }
-            //
-            //       final results = await placesService.getSuggestions(controller.text);
-            //
-            //       return results.map((place) => ListTile(
-            //         leading: const Icon(Icons.location_city),
-            //         title: Text(place['description']),
-            //         onTap: () async {
-            //           controller.closeView(place['description']);
-            //
-            //           ScaffoldMessenger.of(context).showSnackBar(
-            //             SnackBar(content: Text('Aggiungo ${place['description']}...')),
-            //           );
-            //
-            //           await _addNewDestination(place['description']);
-            //         },
-            //       )).toList();
-            //     },
-            //   ),
-            // ),
-            // Section 1: Visited (Rectangles)
+            // Section 1: Suggested Cities
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: Text(
+                "Suggested for you",
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
             SizedBox(
               height: 250,
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('destinations')
-                    .where('state', isEqualTo: DestinationState.visited.value)
-                    .snapshots(),
+              child: FutureBuilder<List<String>>(
+                future: _suggestedCitiesFuture,
                 builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Center(child: Text('Error loading data'));
-                  }
-
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final docs = snapshot.data!.docs;
-
-                  if (docs.isEmpty) {
-                    return const Center(child: Text('No visited destinations found'));
+                  if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(child: Text('No suggestions found or location denied'));
                   }
+
+                  final cities = snapshot.data!;
 
                   return ListView.builder(
                     physics: const BouncingScrollPhysics(),
                     scrollDirection: Axis.horizontal,
-                    itemCount: docs.length,
+                    itemCount: cities.length,
                     itemBuilder: (context, index) {
-                      final destination = Destination.fromFirestore(
-                        docs[index].id,
-                        docs[index].data() as Map<String, dynamic>,
-                      );
+                      final String locationName = cities[index];
 
                       return FutureBuilder<String>(
-                        future: _getImageUrl(destination.image),
+                        future: _getPlaceImage(locationName),
                         builder: (context, urlSnapshot) {
                           return Container(
                             width: MediaQuery.of(context).size.width * 0.4,
@@ -155,12 +109,38 @@ class HomePage extends StatelessWidget {
                                   Positioned.fill(
                                     child: _buildImageWidget(urlSnapshot),
                                   ),
+                                  Positioned(
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.bottomCenter,
+                                          end: Alignment.topCenter,
+                                          colors: [
+                                            Colors.black.withValues(alpha: 0.8),
+                                            Colors.transparent,
+                                          ],
+                                        ),
+                                      ),
+                                      child: Text(
+                                        locationName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
                                   Positioned.fill(
                                     child: Material(
                                       color: Colors.transparent,
                                       child: InkWell(
                                         onTap: () {
-                                          _showDestinationDetails(context, destination);
+                                          _showCityDescription(context, locationName);
                                         },
                                       ),
                                     ),
@@ -171,7 +151,7 @@ class HomePage extends StatelessWidget {
                           );
                         },
                       );
-                    }
+                    },
                   );
                 },
               ),
@@ -181,17 +161,17 @@ class HomePage extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
               child: Text(
                 "Explore other places",
-                style: Theme.of(context).textTheme.titleLarge,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
             
-            // Section 2: Not Visited
+            // Section 2
             SizedBox(
-              height: 200, // Increased height to accommodate labels better
+              height: 200,
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
-                    .collection('destinations')
-                    .where('state', isEqualTo: DestinationState.notVisited.value)
+                    .collection('journeys')
+                    .where('state', isEqualTo: 'not_visited')
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
@@ -213,13 +193,13 @@ class HomePage extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     itemCount: docs.length,
                     itemBuilder: (context, index) {
-                      final destination = Destination.fromFirestore(
-                        docs[index].id,
-                        docs[index].data() as Map<String, dynamic>,
-                      );
+                      final journey = Journey.fromFirestore(docs[index]);
+                      final String locationName = journey.destinations.isNotEmpty 
+                          ? journey.destinations.first 
+                          : journey.name;
 
                       return FutureBuilder<String>(
-                        future: _getImageUrl(destination.image),
+                        future: _getPlaceImage(locationName),
                         builder: (context, urlSnapshot) {
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 10.0),
@@ -253,7 +233,7 @@ class HomePage extends StatelessWidget {
                                             color: Colors.transparent,
                                             child: InkWell(
                                               onTap: () {
-                                                _showDestinationDetails(context, destination);
+                                                _showJourneyDetails(context, journey);
                                               },
                                             ),
                                           ),
@@ -264,7 +244,7 @@ class HomePage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 10),
                                 Text(
-                                  destination.name,
+                                  locationName,
                                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -284,7 +264,7 @@ class HomePage extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
               child: Text(
                 "Still to be visited...",
-                style: Theme.of(context).textTheme.titleLarge,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
 
@@ -293,8 +273,8 @@ class HomePage extends StatelessWidget {
               height: 200,
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
-                    .collection('destinations')
-                    .where('state', isEqualTo: DestinationState.toBeVisited.value)
+                    .collection('journeys')
+                    .where('state', isEqualTo: 'to_be_visited')
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
@@ -308,7 +288,7 @@ class HomePage extends StatelessWidget {
                   final docs = snapshot.data!.docs;
 
                   if (docs.isEmpty) {
-                    return const Center(child: Text('No destinations to be visited'));
+                    return const Center(child: Text('No journeys to be visited'));
                   }
 
                   return ListView.builder(
@@ -316,13 +296,13 @@ class HomePage extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     itemCount: docs.length,
                     itemBuilder: (context, index) {
-                      final destination = Destination.fromFirestore(
-                        docs[index].id,
-                        docs[index].data() as Map<String, dynamic>,
-                      );
+                      final journey = Journey.fromFirestore(docs[index]);
+                      final String locationName = journey.destinations.isNotEmpty 
+                          ? journey.destinations.first 
+                          : journey.name;
 
                       return FutureBuilder<String>(
-                        future: _getImageUrl(destination.image),
+                        future: _getPlaceImage(locationName),
                         builder: (context, urlSnapshot) {
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 10.0),
@@ -356,7 +336,7 @@ class HomePage extends StatelessWidget {
                                             color: Colors.transparent,
                                             child: InkWell(
                                               onTap: () {
-                                                _showDestinationDetails(context, destination);
+                                                _showJourneyDetails(context, journey);
                                               },
                                             ),
                                           ),
@@ -367,7 +347,7 @@ class HomePage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 10),
                                 Text(
-                                  destination.name,
+                                  locationName,
                                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -388,43 +368,44 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  void _showDestinationDetails(BuildContext context, Destination destination) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+  void _showJourneyDetails(BuildContext context, Journey journey) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => JourneyDetailsPage(
+          existingJourney: journey,
+          isReadOnly: true,
+        ),
       ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                destination.name,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                destination.description,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Chiudi'),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
+  }
+
+  void _showCityDescription(BuildContext context, String cityName) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final description = await _placesService.getPlaceDescription(cityName);
+
+    if (context.mounted) {
+      Navigator.pop(context); // Close loading
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(cityName),
+          content: Text(description),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Close"),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildImageWidget(AsyncSnapshot<String> snapshot) {

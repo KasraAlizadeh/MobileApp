@@ -50,7 +50,10 @@ class _WalletPageState extends State<WalletPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('My Journeys ✈️'),
+        title: const Text(
+          'My Journeys ✈️',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: Column(
         children: [
@@ -176,23 +179,26 @@ class _WalletPageState extends State<WalletPage> {
               color: isDark ? const Color(0xFF3D5A5A) : const Color(0xFFD1D9D1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: ListTile(
-              title: Text(
-                journey.name,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-              ),
-              onTap: () {
-                // Navigate to view-only details page
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => JourneyDetailsPage(
-                      existingJourney: journey, // Pass your trip item reference object
-                      isReadOnly: true,         // Tells the page to lock down as retrieval-only!
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                title: Text(
+                  journey.name,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                ),
+                onTap: () {
+                  // Navigate to view-only details page
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => JourneyDetailsPage(
+                        existingJourney: journey, // Pass your trip item reference object
+                        isReadOnly: true,         // Tells the page to lock down as retrieval-only!
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         );

@@ -340,9 +340,12 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.isReadOnly
-            ? 'Journey Details ✈️'
-            : (widget.existingJourney == null ? 'New Journey ✈️' : 'Edit Journey ✈️')),
+        title: Text(
+          widget.isReadOnly
+              ? 'Journey Details ✈️'
+              : (widget.existingJourney == null ? 'New Journey ✈️' : 'Edit Journey ✈️'),
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: Column(
         children: [
@@ -506,7 +509,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                 margin: const EdgeInsets.only(bottom: 20),
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey.withOpacity(0.1),
+                                  color: Colors.grey.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Column(

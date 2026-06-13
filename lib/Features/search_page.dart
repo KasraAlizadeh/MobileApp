@@ -135,9 +135,10 @@ class _SearchPageState extends State<SearchPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
-        title: const Text('Journey Explorer & AI 🗺️'),
-        backgroundColor: const Color(0xFF3D5A5A),
-        foregroundColor: Colors.white,
+        title: const Text(
+          'Journey Explorer 🗺️',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('journeys').snapshots(),
