@@ -2,9 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:travel_app/Auth/login_page.dart';
 import 'package:travel_app/Auth/signup_page.dart';
+import 'package:awesome_notifications/awesome_notifications.dart';
 
-class PresentationPage extends StatelessWidget {
-  PresentationPage({super.key});
+class PresentationPage extends StatefulWidget {
+  const PresentationPage({super.key});
+
+  @override
+  State<PresentationPage> createState() => _PresentationPageState();
+}
+
+class _PresentationPageState extends State<PresentationPage> {
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissions();
+  }
+
+  void _checkPermissions() async {
+    // Check Notification Permissions
+    AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
+      if (!isAllowed) {
+        AwesomeNotifications().requestPermissionToSendNotifications();
+      }
+    });
+  }
 
   // Change current page to login page
   void _go_to_login(BuildContext context) {
@@ -26,7 +47,7 @@ class PresentationPage extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(

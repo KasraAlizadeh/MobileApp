@@ -90,7 +90,7 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
-    // This will trigger the permission check as soon as this page opens
+    // This will trigger the permission checks as soon as this page opens
     _checkNotificationPermissions();
     AwesomeNotifications().setListeners(
       onActionReceivedMethod: (ReceivedAction receivedAction) async {
@@ -125,13 +125,11 @@ class _MainPageState extends State<MainPage> {
   void _checkNotificationPermissions() {
     AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
       if (!isAllowed) {
-        // If permission is not allowed, prompt the user
-        // You could also show a custom dialog here explaining WHY you need it
-        // before calling this prompt.
         AwesomeNotifications().requestPermissionToSendNotifications();
       }
     });
   }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(

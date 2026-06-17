@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:geocoding/geocoding.dart';
 import '../Services/google_places_service.dart';
 import '../Services/location_service.dart';
 import 'Wallet/journey.dart';
@@ -29,14 +30,25 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<List<String>> _getSuggestedCities() async {
+    String currentCity = "Your City";
     final position = await _locationService.getCurrentLocation();
+    
     if (position != null) {
-      return await _placesService.getNearbyCities(
-        position.latitude,
-        position.longitude,
-      );
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          currentCity = placemarks.first.locality ?? "Your City";
+        }
+      } catch (e) {
+        print("Geocoding error: $e");
+      }
     }
-    return [];
+    
+    // Returning exactly 3 items: Current City + Roma + Catania
+    return [currentCity, "Roma", "Catania"];
   }
 
   @override
