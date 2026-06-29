@@ -59,6 +59,23 @@ class AppTheme {
         )
       ),
     ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: Color(0xFF354F52),
+      surfaceTintColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(25),
+      ),
+      titleTextStyle: const TextStyle(
+        fontFamily: 'montserrat',
+        fontSize: 30,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
+      contentTextStyle: const TextStyle(
+        fontSize: 16,
+        color: Colors.white,
+      ),
+    ),
     useMaterial3: true,
   );
 
