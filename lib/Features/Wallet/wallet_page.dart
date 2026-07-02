@@ -303,7 +303,7 @@ class _WalletPageState extends State<WalletPage> {
     }
   }
 
-  //eidt loigc
+  //edit logic
   Future<void> _handleEdit(int index) async {
     final bool? didUpdate = await Navigator.push(
       context,

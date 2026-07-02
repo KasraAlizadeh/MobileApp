@@ -109,32 +109,4 @@ class GooglePlacesService {
     }
     return null;
   }
-
-  Future<List<String>> getNearbyCities(double lat, double lng) async {
-    final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
-            '?location=$lat,$lng'
-            '&rankby=distance'
-            '&type=locality'
-            '&key=$_apiKey'
-    );
-
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List results = data['results'] ?? [];
-
-        return results
-            .map<String>((result) => result['name'] as String)
-            .where((name) => name.isNotEmpty)
-            .toSet()
-            .take(10)
-            .toList();
-      }
-    } catch (e) {
-      print('Error Fetching Nearby Cities: $e');
-    }
-    return [];
-  }
 }
