@@ -15,6 +15,7 @@ import 'Features/Profile/profile_page.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'Services/notification_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'Features/splash_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -43,23 +44,34 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: currentTheme,
+            title: 'TravelMate',
             //home: PresentationPage(),
-            home: StreamBuilder<User?>(
-              stream: FirebaseAuth.instance.authStateChanges(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                if (snapshot.hasData) {
-                  return const MainPage(title: "Welcome home!");
-                }
-                return const PresentationPage();
-              },
-            ),
+            home: const SplashPage(),
           );
         },
+    );
+  }
+}
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A))),
+          );
+        }
+        // If logged in, send them straight to the main app dashboard navigation stack
+        if (snapshot.hasData) {
+          return const MainPage(title: "Welcome home!");
+        }
+        // If logged out, show your partner's landing PresentationPage
+        return const PresentationPage();
+      },
     );
   }
 }

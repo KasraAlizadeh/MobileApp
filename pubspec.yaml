@@ -58,6 +58,7 @@ dependencies:
   path_provider: ^2.1.6
   local_auth: ^3.0.1
   shared_preferences: ^2.5.5
+  lottie: ^3.3.3
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +69,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.4.7
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -87,6 +90,7 @@ flutter:
   assets:
     - assets/icons/globe.svg
     - .env
+    - assets/animations/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -118,3 +122,18 @@ flutter:
     - family: Lobster
       fonts:
         - asset: assets/fonts/lobster/Lobster-Regular.ttf
+flutter_native_splash:
+  color: "#ffffff"
+  image: "assets/icons/planet.png"
+  fullscreen: true
+
+  # This ensures Android 12+ devices handle the native window properly
+  android_12:
+    image: "assets/icons/planet.png"
+    color: "#ffffff"
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icons/planet.png"
+  min_sdk_android: 21
