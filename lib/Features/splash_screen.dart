@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:travel_app/Auth/presentation_page.dart';
 
+import '../main.dart';
+
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -28,7 +30,7 @@ class _SplashPageState extends State<SplashPage> {
       // Smoothly jump to your main wallet page and clear the history stack
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => PresentationPage()),
+        MaterialPageRoute(builder: (context) => const AuthGate()),
       );
     }
   }
