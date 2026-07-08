@@ -14,6 +14,7 @@ import 'Features/profile_page.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'Services/notification_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'Features/splash_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -42,7 +43,9 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: currentTheme,
-            home: PresentationPage(),
+            title: 'TravelMate',
+            //home: PresentationPage(),
+            home: const SplashPage(),
           );
         },
     );
