@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import '../Services/google_places_service.dart';
 import '../Services/location_service.dart';
 import '../Services/osm_service.dart';
@@ -20,11 +21,10 @@ class _HomePageState extends State<HomePage> {
   final GooglePlacesService _placesService = GooglePlacesService();
   final OsmService _osmService = OsmService();
 
-  // Stati locali per evitare i re-build compulsivi dei FutureBuilder
   List<SuggestedCity> _suggestedCities = [];
   bool _isInitialLoading = true;
+  bool _locationDenied = false;
 
-  // Mappa per salvare le immagini della sezione "Explore" ed evitare il flash
   Map<String, String> _exploreImagesCache = {};
   bool _isExploreLoading = true;
 
@@ -44,30 +44,80 @@ class _HomePageState extends State<HomePage> {
     'Rovigo', 'Gorizia', 'Pordenone', 'Imperia', 'Siena', 'Rieti', 'Chieti', 'Avellino',
     'Frosinone', 'Campobasso', 'Aosta'
   ];
+
   late List<String> _randomCapitals;
 
   @override
   void initState() {
     super.initState();
-    _loadAllPageData();
+    _loadAllPageData(requestActivation: false); // Silenzioso all'avvio
   }
 
-  // Unico punto di ingresso per caricare i dati in modo sincrono/asincrono controllato
-  Future<void> _loadAllPageData() async {
-    // 1. Genera le 5 città casuali
+  Future<void> _loadAllPageData({bool requestActivation = true}) async {
     _randomCapitals = (List<String>.from(_italianCapitals)..shuffle()).take(5).toList();
+    
+    // Avviamo il pre-caricamento delle immagini in parallelo
+    final preloadTask = _preloadExploreImages();
+    
+    // Controlliamo i permessi
+    bool hasPermission = await _checkLocationPermission(requestActivation: requestActivation);
+    if (!hasPermission) {
+      if (mounted) {
+        setState(() {
+          _locationDenied = true;
+          _isInitialLoading = false;
+        });
+      }
+      return;
+    }
 
-    // 2. Avvia subito il recupero delle immagini per la sezione "Explore"
-    _preloadExploreImages();
+    // Aspettiamo che entrambi i task (posizione e immagini esplora) siano completati
+    final results = await Future.wait([
+      _getSuggestedCities(),
+      preloadTask,
+    ]);
 
-    // 3. Avvia il recupero delle città suggerite (Posizione + Catania)
-    final initialList = await _getSuggestedCities();
+    final initialList = results[0] as List<SuggestedCity>;
 
     if (mounted) {
       setState(() {
+        _locationDenied = false;
         _suggestedCities = initialList;
         _isInitialLoading = false;
       });
+    }
+  }
+
+  Future<bool> _checkLocationPermission({bool requestActivation = true}) async {
+    try {
+      // 1. Controlla se il servizio di localizzazione è attivo
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (requestActivation) {
+          await Geolocator.openLocationSettings();
+        }
+        return false; 
+      }
+
+      // 2. Controlla i permessi dell'app
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        if (requestActivation) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.denied) return false;
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+        if (requestActivation) {
+          await Geolocator.openAppSettings();
+        }
+        return false;
+      }
+      
+      return true;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -80,7 +130,6 @@ class _HomePageState extends State<HomePage> {
     await _loadAllPageData();
   }
 
-  // Pre-carica gli URL della seconda sezione UNA VOLTA SOLA
   Future<void> _preloadExploreImages() async {
     final Map<String, String> tempCache = {};
 
@@ -97,9 +146,8 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Caricamento asincrono rapido dei primi blocchi stabili
   Future<List<SuggestedCity>> _getSuggestedCities() async {
-    String currentCity = "La tua posizione";
+    String currentCity = "Your position";
 
     try {
       final position = await _locationService.getCurrentLocation();
@@ -114,25 +162,31 @@ class _HomePageState extends State<HomePage> {
             currentCity = placemarks.first.locality ?? currentCity;
           }
         } catch (e) {
-          print("Errore Geocoding: $e");
+          print("Geocoding error: $e");
         }
 
-        // Lanciamo Overpass in background senza await
         _loadNearbyCityAsynchronously(position.latitude, position.longitude, currentCity);
       }
     } catch (e) {
-      print("Errore geolocalizzazione rapida: $e");
+      print("Fast localization error: $e");
     }
 
     final images = await Future.wait([
       _placesService.getPlacePhotoUrl(currentCity),
-      _placesService.getPlacePhotoUrl("Catania"),
     ]);
 
     return [
-      SuggestedCity(name: currentCity, imageUrl: images[0] ?? ''),
-      SuggestedCity(name: "Sto cercando...", imageUrl: '', isLoading: true),
-      SuggestedCity(name: "Catania", imageUrl: images[1] ?? ''),
+      SuggestedCity(
+        name: currentCity,
+        imageUrl: images[0] ?? '',
+        subtitle: "Where am I?",
+      ),
+      SuggestedCity(
+        name: "Loading...",
+        imageUrl: '',
+        isLoading: true,
+        subtitle: "Explore nearby",
+      ),
     ];
   }
 
@@ -169,18 +223,91 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     setState(() {
-      if (_suggestedCities.length == 3) {
-        _suggestedCities[1] = SuggestedCity(name: nearbyCity, imageUrl: imageUrl, isLoading: false);
+      if (_suggestedCities.length == 2) {
+        _suggestedCities[1] = SuggestedCity(
+          name: nearbyCity,
+          imageUrl: imageUrl,
+          isLoading: false,
+          subtitle: "Explore nearby",
+        );
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // Mentre carica la prima volta o se la posizione è negata, non mostriamo la struttura della Home
+    if (_isInitialLoading || _locationDenied) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Home')),
+        body: _isInitialLoading 
+          ? const Center(child: CircularProgressIndicator())
+          : Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.location_off_outlined,
+                      size: 80,
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      "Enable Location",
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "To give you the best experience, we need to know where you are.",
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        setState(() => _isInitialLoading = true);
+                        await _loadAllPageData(requestActivation: true);
+                      },
+                      icon: const Icon(Icons.my_location),
+                      label: const Text("Allow Access"),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Home', overflow: TextOverflow.ellipsis),
       ),
+      //To activate when you don't want to load the images
+      /*
+      body: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.home_outlined, size: 100, color: Colors.grey),
+            SizedBox(height: 20),
+            Text(
+              "Home Placeholder",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            Text("Content is currently hidden", style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      ),
+      */
       body: RefreshIndicator(
         onRefresh: _refreshData,
         child: SingleChildScrollView(
@@ -189,10 +316,6 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Section 1: Suggested Cities
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-                child: Text("Suggested for you", style: Theme.of(context).textTheme.titleMedium),
-              ),
               SizedBox(
                 height: 250,
                 child: _isInitialLoading
@@ -204,67 +327,86 @@ class _HomePageState extends State<HomePage> {
                   itemBuilder: (context, index) {
                     final SuggestedCity city = _suggestedCities[index];
 
-                    return Container(
-                      width: MediaQuery.of(context).size.width * 0.4,
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(25),
-                        border: Border.all(color: Theme.of(context).colorScheme.primary, width: 3),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (city.subtitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4.0),
+                            child: Text(
+                              city.subtitle!,
+                              style: Theme.of(context).textTheme.titleMedium
+                            ),
                           ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: Stack(
-                          children: [
-                            if (city.isLoading)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16.0),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      CircularProgressIndicator(),
-                                      SizedBox(height: 12),
-                                    ],
-                                  ),
+                        Expanded(
+                          child: Container(
+                            width: MediaQuery.of(context).size.width * 0.4,
+                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(25),
+                              border: Border.all(color: Theme.of(context).colorScheme.primary, width: 3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 5),
                                 ),
-                              )
-                            else ...[
-                              Positioned.fill(child: _buildImageWidgetFromUrl(city.imageUrl)),
-                              Positioned(
-                                bottom: 0, left: 0, right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.bottomCenter, end: Alignment.topCenter,
-                                      colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(22),
+                              child: Stack(
+                                children: [
+                                  if (city.isLoading)
+                                    const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(16.0),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            CircularProgressIndicator(),
+                                            SizedBox(height: 12),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  else ...[
+                                    Positioned.fill(child: _buildImageWidgetFromUrl(city.imageUrl)),
+                                    Positioned(
+                                      bottom: 0, left: 0, right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                                            colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
+                                          ),
+                                        ),
+                                        child: Text(
+                                          city.name,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  child: Text(
-                                    city.name,
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
+                                    Positioned.fill(
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(onTap: () => _showCityDescription(context, city.name)),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
-                              Positioned.fill(
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(onTap: () => _showCityDescription(context, city.name)),
-                                ),
-                              ),
-                            ],
-                          ],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   },
                 ),
@@ -277,7 +419,7 @@ class _HomePageState extends State<HomePage> {
 
               // Section 2: Explore other places (RIVOLUZIONATA: Niente più FutureBuilder, zero flash!)
               SizedBox(
-                height: 200,
+                height: 150,
                 child: _isExploreLoading
                     ? const Center(child: CircularProgressIndicator())
                     : ListView.builder(
@@ -433,18 +575,10 @@ class _HomePageState extends State<HomePage> {
     );
 
     try {
-      String description = await _placesService.getPlaceDescription(cityName);
-
-      if (description.length > 200) {
-        final pattern = RegExp(r'\.(?!\d)');
-        final match = pattern.firstMatch(description.substring(200));
-        if (match != null) {
-          description = description.substring(0, 200 + match.start + 1);
-        }
-      }
+      String description = await _placesService.getCityStats(cityName);
 
       if (!context.mounted) return;
-      Navigator.pop(context); // Chiude il loader
+      Navigator.pop(context);
 
       showDialog(
         context: context,
@@ -527,7 +661,16 @@ class _HomePageState extends State<HomePage> {
     return CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.cover,
-      placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+      placeholder: (context, url) => Container(
+        color: Colors.grey[200],
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
       errorWidget: (context, url, error) => const Icon(Icons.error),
     );
   }
@@ -537,10 +680,12 @@ class SuggestedCity {
   final String name;
   final String imageUrl;
   final bool isLoading;
+  final String? subtitle;
 
   SuggestedCity({
     required this.name,
     required this.imageUrl,
     this.isLoading = false,
+    this.subtitle,
   });
 }

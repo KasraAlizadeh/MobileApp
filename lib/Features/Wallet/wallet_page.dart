@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../Services/notification_service.dart';
 import 'journey.dart';
 import 'journey_details.dart';
@@ -16,12 +18,40 @@ class _WalletPageState extends State<WalletPage> {
   // state viariables
   List<Journey> _trips = [];
   bool _isLoading = true; // loading spinner while fetching data initially
+  bool _isAuthorized = false;
+  final LocalAuthentication _auth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
-    // fetch all journeys from Firestore right when the screen opens
-    _fetchJourneysFromFirestore();
+    _checkAuthentication();
+  }
+
+  Future<void> _checkAuthentication() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool biometricEnabled = prefs.getBool('biometric_enabled') ?? false;
+
+    if (biometricEnabled) {
+      try {
+        bool authenticated = await _auth.authenticate(
+          localizedReason: 'Please authenticate to view your wallet',
+        );
+        if (authenticated) {
+          setState(() => _isAuthorized = true);
+          _fetchJourneysFromFirestore();
+        } else {
+          // Stay in unauthorized state
+        }
+      } catch (e) {
+        debugPrint("Auth error: $e");
+        // In case of error, you might want to allow or block access
+        // For now, let's allow access if biometric check fails badly
+        _fetchJourneysFromFirestore();
+      }
+    } else {
+      setState(() => _isAuthorized = true);
+      _fetchJourneysFromFirestore();
+    }
   }
 
   // one time fetch logic
@@ -47,6 +77,26 @@ class _WalletPageState extends State<WalletPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isAuthorized) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('My Journeys ✈️')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline, size: 80, color: Colors.grey),
+              const SizedBox(height: 20),
+              const Text("Wallet Locked", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: _checkAuthentication,
+                child: const Text("Unlock with Biometrics"),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(

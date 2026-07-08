@@ -11,7 +11,7 @@ import 'Auth/presentation_page.dart';
 import 'Features/home_page.dart';
 import 'Features/search_page.dart';
 import 'Features/Wallet/wallet_page.dart';
-import 'Features/profile_page.dart';
+import 'Features/Profile/profile_page.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'Services/notification_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -74,8 +74,8 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  int _selectedIndex = 0;
-  final List<int> _indexesStack = [0];
+  static int _selectedIndex = 0;
+  static final List<int> _indexesStack = [0];
 
   final List<Widget> _pages = [
     HomePage(),

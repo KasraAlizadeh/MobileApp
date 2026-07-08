@@ -79,7 +79,60 @@ class AppTheme {
     useMaterial3: true,
   );
 
+  static final theme2 = ThemeData(
+    brightness: Brightness.dark,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: brandGreen,
+      brightness: Brightness.dark,
+      primary: const Color(0xFF84a98c),
+      surface: const Color(0xFF2f3e46),
+    ),
+    scaffoldBackgroundColor: const Color(0xFF2f3e46),
+    appBarTheme: const AppBarThemeData(
+        toolbarHeight: 80,
+        backgroundColor: Color(0xFF2f3e46),
+        titleTextStyle: TextStyle(
+          fontFamily: 'montserrat',
+          fontSize: 30,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF84a98c),
+        )
+    ),
+    textTheme: const TextTheme(
+      titleLarge: TextStyle(
+        fontSize: 30,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFFcad2c5),
+      ),
+      titleMedium: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF84a98c),
+      ),
+    ),
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: Color(0xFF2f3e46),
+      elevation: 8,
+      selectedItemColor: Color(0xFFcad2c5),
+      unselectedItemColor: Color(0xFF848282),
+      showSelectedLabels: true,
+      showUnselectedLabels: false,
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF52796F),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)
+            ),
+        )
+    ),
+    dividerTheme: const DividerThemeData(color: Colors.white24),
+    useMaterial3: true,
+  );
+
   static final List<ThemeData> themes = [
     theme1,
+    theme2,
   ];
 }
