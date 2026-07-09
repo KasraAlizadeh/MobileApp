@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -58,7 +59,15 @@ class _WalletPageState extends State<WalletPage> {
   Future<void> _fetchJourneysFromFirestore() async {
     setState(() => _isLoading = true);
     try {
-      QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('journeys').get();
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('journeys')
+          .where('userId', isEqualTo: currentUser.uid)
+          .get();
 
       // convert Firestore documents into Journey objects
       List<Journey> loadedTrips = snapshot.docs.map((doc) {

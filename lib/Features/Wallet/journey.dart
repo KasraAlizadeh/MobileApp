@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Journey {
   final String id;
+  final String userId;
   final String name;
   final String? type;
   final String? startDate;
@@ -23,6 +24,7 @@ class Journey {
 
   Journey({
     required this.id,
+    required this.userId,
     required this.name,
     this.type,
     this.startDate,
@@ -41,6 +43,7 @@ class Journey {
     Map data = doc.data() as Map<String, dynamic>;
     return Journey(
       id: doc.id,
+        userId: data['userId'] ?? '',
       name: data['name'] ?? 'Unnamed Journey',
       type: data['travelType'],
       startDate: data['startDate'],

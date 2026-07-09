@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
@@ -232,7 +233,11 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
     try {
       String newFolder = _nameController.text.trim();
       String? fcmToken = await FirebaseMessaging.instance.getToken();
-
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception("No authorized user found!");
+      }
+      String userId = currentUser.uid;
       // check if we are in EDIT mode and if the name actually changed
       if (widget.existingJourney != null) {
         String oldFolder = widget.existingJourney!.name;
@@ -250,6 +255,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       if (_newInsuranceFile != null) _finalPdfUrls[2] = await _upload("insurance.pdf", _newInsuranceFile!, newFolder);
 
       Map<String, dynamic> journeyData = {
+        'userId': userId,
         'name': newFolder,
         'travelType': _selectedType,
         'startDate': _startController.text,
