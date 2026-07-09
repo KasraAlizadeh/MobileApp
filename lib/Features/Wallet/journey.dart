@@ -36,7 +36,6 @@ class Journey {
     this.state
   });
 
-  // Factory constructor to easily create a Journey from Firestore data
   factory Journey.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return Journey(

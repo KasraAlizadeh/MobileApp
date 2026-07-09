@@ -59,6 +59,7 @@ dependencies:
   local_auth: ^3.0.1
   shared_preferences: ^2.5.5
   lottie: ^3.3.3
+  shimmer: ^3.0.0
 
 dev_dependencies:
   flutter_test:

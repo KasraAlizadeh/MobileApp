@@ -1,10 +1,14 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geocoding/geocoding.dart';
 import '../constants.dart';
 
 class GooglePlacesService {
-
   final String _apiKey = googleMapsApiKey;
+  
+  // In-memory cache per questa sessione
+  static final Map<String, String> _photoUrlCache = {};
 
   Future<List<Map<String, dynamic>>> getSuggestions(String input) async {
     if (input.trim().isEmpty) return [];
@@ -36,7 +40,6 @@ class GooglePlacesService {
 
   Future<String> getPlaceDescription(String cityName) async {
     try {
-      // Step 1: Search Wikipedia for the city specifically to avoid ambiguity (e.g., cheese vs town)
       final searchUrl = Uri.parse(
           'https://en.wikipedia.org/w/api.php'
           '?action=query'
@@ -53,15 +56,12 @@ class GooglePlacesService {
         final searchData = jsonDecode(searchResponse.body);
         final List searchResults = searchData['query']?['search'] ?? [];
         if (searchResults.isNotEmpty) {
-          // The search result with 'city' appended usually yields the geographical entity
           bestTitle = searchResults[0]['title'];
         }
       }
 
-      // Use the best title found, or fallback to the original cityName
       final finalTitle = (bestTitle ?? cityName).replaceAll(' ', '_');
 
-      // Step 2: Fetch the summary for the identified title
       final summaryUrl = Uri.parse(
           'https://en.wikipedia.org/api/rest_v1/page/summary/$finalTitle'
       );
@@ -80,6 +80,33 @@ class GooglePlacesService {
   }
 
   Future<String> getCityStats(String cityName) async {
+    String regionInfo = "";
+    
+    // 1. Recupero info geografiche (Regione/Provincia) tramite Geocoding
+    try {
+      List<Location> locations = await locationFromAddress(cityName).timeout(const Duration(seconds: 2));
+      if (locations.isNotEmpty) {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          locations.first.latitude,
+          locations.first.longitude,
+        ).timeout(const Duration(seconds: 2));
+
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final region = p.administrativeArea ?? "";
+          final province = p.subAdministrativeArea ?? "";
+          if (region.isNotEmpty) {
+            regionInfo += "🗺️ Region: $region\n";
+          }
+          if (province.isNotEmpty) {
+            regionInfo += "📍 Province: $province\n";
+          }
+        }
+      }
+    } catch (e) {
+      print("Geocoding service error: $e");
+    }
+
     try {
       final searchUrl = Uri.parse(
           'https://en.wikipedia.org/w/api.php'
@@ -91,7 +118,11 @@ class GooglePlacesService {
       final searchRes = await http.get(searchUrl);
       final searchData = jsonDecode(searchRes.body);
       final List searchResults = searchData['query']?['search'] ?? [];
-      if (searchResults.isEmpty) return "No data found for $cityName.";
+      
+      if (searchResults.isEmpty) {
+        return regionInfo.isNotEmpty ? regionInfo + "No detailed stats found." : "No data found for $cityName.";
+      }
+      
       final String title = searchResults[0]['title'];
 
       final propUrl = Uri.parse(
@@ -105,9 +136,10 @@ class GooglePlacesService {
       final Map pages = jsonDecode(propRes.body)['query']['pages'];
       final wikidataId = pages.values.first['pageprops']?['wikibase_item'];
 
-      if (wikidataId == null) return "No technical data found for $cityName.";
+      if (wikidataId == null) {
+        return regionInfo + "No technical data found.";
+      }
 
-      // 3. Interroga Wikidata per Popolazione (P1082) e Superficie (P2046)
       final dataUrl = Uri.parse(
           'https://www.wikidata.org/w/api.php'
           '?action=wbgetentities'
@@ -118,10 +150,10 @@ class GooglePlacesService {
 
       final dataRes = await http.get(dataUrl);
       final entities = jsonDecode(dataRes.body)['entities'];
-      if (entities == null || entities[wikidataId] == null) return "Data error.";
+      if (entities == null || entities[wikidataId] == null) return regionInfo + "Data error.";
 
       final claims = entities[wikidataId]['claims'];
-      if (claims == null) return "No claims found.";
+      if (claims == null) return regionInfo + "No claims found.";
 
       String? getClaimValue(List? claimList) {
         if (claimList == null || claimList.isEmpty) return null;
@@ -138,10 +170,11 @@ class GooglePlacesService {
       String? areaStr = getClaimValue(claims['P2046']);
 
       if (popStr == null && areaStr == null) {
-        return "Detailed stats are empty for $cityName.";
+        return regionInfo + "Detailed stats are empty.";
       }
 
       StringBuffer buffer = StringBuffer();
+      buffer.write(regionInfo);
 
       double? p;
       double? a;
@@ -159,7 +192,7 @@ class GooglePlacesService {
       if (areaStr != null) {
         a = double.tryParse(areaStr.replaceAll('+', ''));
         if (a != null) {
-          buffer.writeln("📐 Surface: ${a.toStringAsFixed(2)} km²"); // Attenzione: assume siano km²
+          buffer.writeln("📐 Surface: ${a.toStringAsFixed(2)} km²");
         }
       }
 
@@ -172,10 +205,26 @@ class GooglePlacesService {
     } catch (e) {
       print("Stats Wikidata error: $e");
     }
-    return "Could not retrieve detailed statistics for $cityName.";
+    return regionInfo + "Could not retrieve detailed statistics.";
   }
 
   Future<String?> getPlacePhotoUrl(String cityName) async {
+    final cleanCityName = cityName.trim().toLowerCase();
+    
+    // 1. Check in-memory cache
+    if (_photoUrlCache.containsKey(cleanCityName)) {
+      return _photoUrlCache[cleanCityName];
+    }
+
+    // 2. Check persistent cache (SharedPreferences)
+    final prefs = await SharedPreferences.getInstance();
+    final cachedUrl = prefs.getString('photo_url_$cleanCityName');
+    if (cachedUrl != null) {
+      _photoUrlCache[cleanCityName] = cachedUrl;
+      return cachedUrl;
+    }
+
+    // 3. If not cached, fetch from Google
     final searchUrl = Uri.parse(
         'https://maps.googleapis.com/maps/api/place/findplacefromtext/json'
             '?input=${Uri.encodeComponent(cityName)}'
@@ -193,10 +242,16 @@ class GooglePlacesService {
           final photos = candidates[0]['photos'] as List?;
           if (photos != null && photos.isNotEmpty) {
             final photoReference = photos[0]['photo_reference'];
-            return 'https://maps.googleapis.com/maps/api/place/photo'
-                '?maxwidth=800'
+            final url = 'https://maps.googleapis.com/maps/api/place/photo'
+                '?maxwidth=600'
                 '&photo_reference=$photoReference'
                 '&key=$_apiKey';
+            
+            // Save to caches
+            _photoUrlCache[cleanCityName] = url;
+            await prefs.setString('photo_url_$cleanCityName', url);
+            
+            return url;
           }
         }
       }
