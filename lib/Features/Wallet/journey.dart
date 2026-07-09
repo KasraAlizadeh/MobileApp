@@ -13,6 +13,7 @@ class Journey {
   final List<Map<String, dynamic>> activities;
   final String? notes;
   final List<String> pdfUrls;
+  final List<String> imageUrls;
   // Helper to safely get a URL at a specific position
   String? getUrlAt(int index) {
     if (index >= 0 && index < pdfUrls.length) {
@@ -35,6 +36,7 @@ class Journey {
     this.activities = const [],
     this.notes,
     this.pdfUrls = const [],
+    this.imageUrls = const [],
     this.state
   });
 
@@ -54,6 +56,7 @@ class Journey {
       activities: List<Map<String, dynamic>>.from(data['activities'] ?? []),
       notes: data['notes'],
       pdfUrls: List<String>.from(data['pdfUrls'] ?? []),
+        imageUrls: List<String>.from(data['photoUrls'] ?? []),
       state: data['state'] ?? 'to_be_visited'
 
     );
