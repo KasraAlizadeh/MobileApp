@@ -131,16 +131,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _preloadExploreImages() async {
-    final Map<String, String> tempCache = {};
+    final Map<String, String> imageTempCache = {};
 
     await Future.wait(_randomCapitals.map((cityName) async {
-      final url = await _placesService.getPlacePhotoUrl(cityName) ?? '';
-      tempCache[cityName] = url;
+      final url = await _placesService.getPlacePhotoUrl(cityName);
+      imageTempCache[cityName] = url ?? '';
     }));
 
     if (mounted) {
       setState(() {
-        _exploreImagesCache = tempCache;
+        _exploreImagesCache = imageTempCache;
         _isExploreLoading = false;
       });
     }
@@ -162,13 +162,13 @@ class _HomePageState extends State<HomePage> {
             currentCity = placemarks.first.locality ?? currentCity;
           }
         } catch (e) {
-          print("Geocoding error: $e");
+          debugPrint("Geocoding error: $e");
         }
 
         _loadNearbyCityAsynchronously(position.latitude, position.longitude, currentCity);
       }
     } catch (e) {
-      print("Fast localization error: $e");
+      debugPrint("Fast localization error: $e");
     }
 
     final images = await Future.wait([
@@ -211,7 +211,7 @@ class _HomePageState extends State<HomePage> {
         nearbyCity = localFallbackList.first;
       }
     } catch (e) {
-      print("Errore background OSM: $e");
+      debugPrint("Errore background OSM: $e");
       final localFallbackList = List<String>.from(_italianCapitals)
         ..removeWhere((city) => city.trim().toLowerCase() == currentCity.trim().toLowerCase())
         ..shuffle();
@@ -575,7 +575,8 @@ class _HomePageState extends State<HomePage> {
     );
 
     try {
-      String description = await _placesService.getCityStats(cityName);
+      final data = await _placesService.getCityStats(cityName);
+      String description = data['stats'] ?? '';
 
       if (!context.mounted) return;
       Navigator.pop(context);
@@ -593,27 +594,32 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     const SizedBox(width: 48),
                     Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final bool hasSpaces = cityName.contains(' ');
-                          return FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: hasSpaces
-                                ? ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
-                              child: Text(
-                                cityName,
-                                style: Theme.of(context).dialogTheme.titleTextStyle,
-                                textAlign: TextAlign.center, softWrap: true, maxLines: 2,
-                              ),
-                            )
-                                : Text(
-                              cityName,
-                              style: Theme.of(context).dialogTheme.titleTextStyle,
-                              textAlign: TextAlign.center, maxLines: 1,
-                            ),
-                          );
-                        },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final bool hasSpaces = cityName.contains(' ');
+                              return FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: hasSpaces
+                                    ? ConstrainedBox(
+                                  constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+                                  child: Text(
+                                    cityName,
+                                    style: Theme.of(context).dialogTheme.titleTextStyle,
+                                    textAlign: TextAlign.center, softWrap: true, maxLines: 2,
+                                  ),
+                                )
+                                    : Text(
+                                  cityName,
+                                  style: Theme.of(context).dialogTheme.titleTextStyle,
+                                  textAlign: TextAlign.center, maxLines: 1,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     IconButton(
@@ -625,10 +631,38 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 10),
                 Flexible(
                   child: SingleChildScrollView(
-                    child: Text(
-                      description,
-                      style: Theme.of(context).dialogTheme.contentTextStyle,
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: description.split('\n').map((line) {
+                        if (line.trim().isEmpty) return const SizedBox(height: 10);
+                        
+                        final parts = line.split(':');
+                        if (parts.length < 2) {
+                          return Text(line, style: Theme.of(context).dialogTheme.contentTextStyle);
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2.0),
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '${parts[0]}:',
+                                  style: Theme.of(context).dialogTheme.contentTextStyle?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: parts.sublist(1).join(':'),
+                                  style: Theme.of(context).dialogTheme.contentTextStyle,
+                                ),
+                              ],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
@@ -649,7 +683,7 @@ class _HomePageState extends State<HomePage> {
       );
     } catch (e) {
       if (context.mounted) Navigator.pop(context);
-      print("Errore nel recupero della descrizione: $e");
+      debugPrint("Error showing city description: $e");
     }
   }
 

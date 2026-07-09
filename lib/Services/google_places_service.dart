@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:geocoding/geocoding.dart';
 import '../constants.dart';
 
 class GooglePlacesService {
@@ -79,7 +80,27 @@ class GooglePlacesService {
     return 'Impossible to load the description';
   }
 
-  Future<String> getCityStats(String cityName) async {
+  Future<Map<String, String>> getCityStats(String cityName) async {
+    String stats = "";
+
+    // 1. Recupero Info Geografiche (Regione/Provincia)
+    StringBuffer buffer = StringBuffer();
+    try {
+      List<Location> locations = await locationFromAddress('$cityName, Italy');
+      if (locations.isNotEmpty) {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          locations.first.latitude,
+          locations.first.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          if (p.subAdministrativeArea != null) buffer.writeln("🏛️ Province: ${p.subAdministrativeArea}");
+          if (p.administrativeArea != null) buffer.writeln("🗺️ Region: ${p.administrativeArea}");
+        }
+      }
+    } catch (_) {}
+
+    // 2. Recupero Statistiche (Wikidata)
     try {
       final searchUrl = Uri.parse(
           'https://en.wikipedia.org/w/api.php'
@@ -91,88 +112,83 @@ class GooglePlacesService {
       final searchRes = await http.get(searchUrl);
       final searchData = jsonDecode(searchRes.body);
       final List searchResults = searchData['query']?['search'] ?? [];
-      if (searchResults.isEmpty) return "No data found for $cityName.";
-      final String title = searchResults[0]['title'];
 
-      final propUrl = Uri.parse(
-          'https://en.wikipedia.org/w/api.php'
-          '?action=query'
-          '&prop=pageprops'
-          '&titles=${Uri.encodeComponent(title)}'
-          '&format=json'
-      );
-      final propRes = await http.get(propUrl);
-      final Map pages = jsonDecode(propRes.body)['query']['pages'];
-      final wikidataId = pages.values.first['pageprops']?['wikibase_item'];
+      if (searchResults.isNotEmpty) {
+        final String title = searchResults[0]['title'];
+        final propUrl = Uri.parse(
+            'https://en.wikipedia.org/w/api.php'
+            '?action=query'
+            '&prop=pageprops'
+            '&titles=${Uri.encodeComponent(title)}'
+            '&format=json'
+        );
+        final propRes = await http.get(propUrl);
+        final Map pages = jsonDecode(propRes.body)['query']['pages'];
+        final wikidataId = pages.values.first['pageprops']?['wikibase_item'];
 
-      if (wikidataId == null) return "No technical data found for $cityName.";
+        if (wikidataId != null) {
+          final dataUrl = Uri.parse(
+              'https://www.wikidata.org/w/api.php'
+              '?action=wbgetentities'
+              '&ids=$wikidataId'
+              '&props=claims'
+              '&format=json'
+          );
 
-      // 3. Interroga Wikidata per Popolazione (P1082) e Superficie (P2046)
-      final dataUrl = Uri.parse(
-          'https://www.wikidata.org/w/api.php'
-          '?action=wbgetentities'
-          '&ids=$wikidataId'
-          '&props=claims'
-          '&format=json'
-      );
+          final dataRes = await http.get(dataUrl);
+          final entities = jsonDecode(dataRes.body)['entities'];
+          if (entities != null && entities[wikidataId] != null) {
+            final claims = entities[wikidataId]['claims'];
+            if (claims != null) {
+              String? getClaimValue(List? claimList) {
+                if (claimList == null || claimList.isEmpty) return null;
+                for (var claim in claimList.reversed) {
+                  final datavalue = claim['mainsnak']?['datavalue']?['value'];
+                  if (datavalue != null && datavalue['amount'] != null) {
+                    return datavalue['amount'].toString();
+                  }
+                }
+                return null;
+              }
 
-      final dataRes = await http.get(dataUrl);
-      final entities = jsonDecode(dataRes.body)['entities'];
-      if (entities == null || entities[wikidataId] == null) return "Data error.";
+              String? popStr = getClaimValue(claims['P1082']);
+              String? areaStr = getClaimValue(claims['P2046']);
 
-      final claims = entities[wikidataId]['claims'];
-      if (claims == null) return "No claims found.";
+              double? p, a;
 
-      String? getClaimValue(List? claimList) {
-        if (claimList == null || claimList.isEmpty) return null;
-        for (var claim in claimList.reversed) {
-          final datavalue = claim['mainsnak']?['datavalue']?['value'];
-          if (datavalue != null && datavalue['amount'] != null) {
-            return datavalue['amount'].toString();
+              if (popStr != null) {
+                p = double.tryParse(popStr.replaceAll('+', ''));
+                if (p != null) {
+                  final formattedPop = p.toInt().toString().replaceAllMapped(
+                      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+                      (Match m) => '${m[1]},');
+                  buffer.writeln("👥 Population: $formattedPop");
+                }
+              }
+
+              if (areaStr != null) {
+                a = double.tryParse(areaStr.replaceAll('+', ''));
+                if (a != null) buffer.writeln("📐 Surface: ${a.toStringAsFixed(2)} km²");
+              }
+
+              if (p != null && a != null && a > 0) {
+                buffer.writeln("🏙️ Density: ${(p / a).toStringAsFixed(2)} ab/km²");
+              }
+            }
           }
         }
-        return null;
       }
-
-      String? popStr = getClaimValue(claims['P1082']);
-      String? areaStr = getClaimValue(claims['P2046']);
-
-      if (popStr == null && areaStr == null) {
-        return "Detailed stats are empty for $cityName.";
-      }
-
-      StringBuffer buffer = StringBuffer();
-
-      double? p;
-      double? a;
-
-      if (popStr != null) {
-        p = double.tryParse(popStr.replaceAll('+', ''));
-        if (p != null) {
-          final formattedPop = p.toInt().toString().replaceAllMapped(
-              RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-              (Match m) => '${m[1]},');
-          buffer.writeln("👥 Population: $formattedPop");
-        }
-      }
-
-      if (areaStr != null) {
-        a = double.tryParse(areaStr.replaceAll('+', ''));
-        if (a != null) {
-          buffer.writeln("📐 Surface: ${a.toStringAsFixed(2)} km²"); // Attenzione: assume siano km²
-        }
-      }
-
-      if (p != null && a != null && a > 0) {
-        double dens = p / a;
-        buffer.writeln("🏙️ Density: ${dens.toStringAsFixed(2)} ab/km²");
-      }
-
-      return buffer.toString().trim();
     } catch (e) {
-      print("Stats Wikidata error: $e");
+      print("Stats error: $e");
     }
-    return "Could not retrieve detailed statistics for $cityName.";
+
+    stats = buffer.toString().trim();
+    if (stats.isEmpty) stats = "No detailed information found for $cityName.";
+
+    return {
+      'stats': stats,
+      'geo': '', // Non più necessario separato
+    };
   }
 
   Future<String?> getPlacePhotoUrl(String cityName) async {

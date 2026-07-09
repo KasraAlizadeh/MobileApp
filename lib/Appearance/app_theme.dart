@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class AppTheme {
   static const Color brandGreen = Color(0xFF52796F);
+  static const Color darkGreen = Color(0xFF2f3e46);
 
   static final theme1 = ThemeData(
     colorScheme: ColorScheme.fromSeed(
@@ -32,7 +33,7 @@ class AppTheme {
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      selectedItemColor: Color(0xFF354F52),
+      selectedItemColor: darkGreen,
       unselectedItemColor: Color(0xFF848282),
       showSelectedLabels: true,
       showUnselectedLabels: false,
@@ -60,7 +61,7 @@ class AppTheme {
       ),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: Colors.white,
+      backgroundColor: darkGreen,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(25),
@@ -69,11 +70,11 @@ class AppTheme {
         fontFamily: 'montserrat',
         fontSize: 24,
         fontWeight: FontWeight.bold,
-        color: brandGreen,
+        color: Colors.white,
       ),
       contentTextStyle: const TextStyle(
         fontSize: 16,
-        color: Colors.black87,
+        color: Colors.white70,
       ),
     ),
     useMaterial3: true,
@@ -85,12 +86,12 @@ class AppTheme {
       seedColor: brandGreen,
       brightness: Brightness.dark,
       primary: const Color(0xFF84a98c),
-      surface: const Color(0xFF2f3e46),
+      surface: darkGreen,
     ),
-    scaffoldBackgroundColor: const Color(0xFF2f3e46),
+    scaffoldBackgroundColor: darkGreen,
     appBarTheme: const AppBarThemeData(
         toolbarHeight: 80,
-        backgroundColor: Color(0xFF2f3e46),
+        backgroundColor: darkGreen,
         titleTextStyle: TextStyle(
           fontFamily: 'montserrat',
           fontSize: 30,
@@ -111,7 +112,7 @@ class AppTheme {
       ),
     ),
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-      backgroundColor: Color(0xFF2f3e46),
+      backgroundColor: darkGreen,
       elevation: 8,
       selectedItemColor: Color(0xFFcad2c5),
       unselectedItemColor: Color(0xFF848282),
@@ -120,7 +121,7 @@ class AppTheme {
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF52796F),
+            backgroundColor: brandGreen,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12)
@@ -129,7 +130,7 @@ class AppTheme {
     ),
     dividerTheme: const DividerThemeData(color: Colors.white24),
     dialogTheme: DialogThemeData(
-      backgroundColor: const Color(0xFF2f3e46),
+      backgroundColor: darkGreen,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(25),

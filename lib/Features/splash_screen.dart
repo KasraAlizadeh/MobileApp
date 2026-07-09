@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
-import 'package:travel_app/Auth/presentation_page.dart';
 
 import '../main.dart';
 
