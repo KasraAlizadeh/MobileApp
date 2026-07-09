@@ -180,7 +180,7 @@ class _SearchPageState extends State<SearchPage> {
                 flex: 45,
                 child: Container(
                   decoration: const BoxDecoration(
-                    color: Colors.white,
+                    //color: Colors.white,
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(20),
                       topRight: Radius.circular(20),

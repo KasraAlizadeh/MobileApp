@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shimmer/shimmer.dart';
 import '../Services/google_places_service.dart';
 import '../Services/location_service.dart';
 import '../Services/osm_service.dart';
@@ -21,11 +22,13 @@ class _HomePageState extends State<HomePage> {
   final GooglePlacesService _placesService = GooglePlacesService();
   final OsmService _osmService = OsmService();
 
+  late Stream<QuerySnapshot> _journeyStream;
   List<SuggestedCity> _suggestedCities = [];
   bool _isInitialLoading = true;
   bool _locationDenied = false;
 
   Map<String, String> _exploreImagesCache = {};
+  Map<String, String> _exploreGeoCache = {};
   bool _isExploreLoading = true;
 
   final List<String> _italianCapitals = [
@@ -50,6 +53,10 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _journeyStream = FirebaseFirestore.instance
+        .collection('journeys')
+        .where('state', isEqualTo: 'to_be_visited')
+        .snapshots();
     _loadAllPageData(requestActivation: false); // Silenzioso all'avvio
   }
 
@@ -132,15 +139,41 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _preloadExploreImages() async {
     final Map<String, String> tempCache = {};
+    final Map<String, String> tempGeoCache = {};
 
     await Future.wait(_randomCapitals.map((cityName) async {
-      final url = await _placesService.getPlacePhotoUrl(cityName) ?? '';
-      tempCache[cityName] = url;
+      // Fetch photo and location info in parallel
+      final results = await Future.wait([
+        _placesService.getPlacePhotoUrl(cityName),
+        locationFromAddress(cityName).timeout(const Duration(seconds: 2), onTimeout: () => []),
+      ]);
+
+      tempCache[cityName] = (results[0] as String?) ?? '';
+      
+      final locations = results[1] as List<Location>;
+      if (locations.isNotEmpty) {
+        try {
+          final placemarks = await placemarkFromCoordinates(
+            locations.first.latitude,
+            locations.first.longitude,
+          ).timeout(const Duration(seconds: 2), onTimeout: () => []);
+          
+          if (placemarks.isNotEmpty) {
+            final p = placemarks.first;
+            final region = p.administrativeArea ?? '';
+            final province = p.subAdministrativeArea ?? '';
+            tempGeoCache[cityName] = region.isNotEmpty && province.isNotEmpty 
+                ? "$province ($region)" 
+                : (region.isNotEmpty ? region : province);
+          }
+        } catch (_) {}
+      }
     }));
 
     if (mounted) {
       setState(() {
         _exploreImagesCache = tempCache;
+        _exploreGeoCache = tempGeoCache;
         _isExploreLoading = false;
       });
     }
@@ -148,6 +181,8 @@ class _HomePageState extends State<HomePage> {
 
   Future<List<SuggestedCity>> _getSuggestedCities() async {
     String currentCity = "Your position";
+    String? currentRegion;
+    String? currentProvince;
 
     try {
       final position = await _locationService.getCurrentLocation();
@@ -159,7 +194,10 @@ class _HomePageState extends State<HomePage> {
           ).timeout(const Duration(seconds: 3), onTimeout: () => []);
 
           if (placemarks.isNotEmpty) {
-            currentCity = placemarks.first.locality ?? currentCity;
+            final p = placemarks.first;
+            currentCity = p.locality ?? currentCity;
+            currentRegion = p.administrativeArea;
+            currentProvince = p.subAdministrativeArea;
           }
         } catch (e) {
           print("Geocoding error: $e");
@@ -180,6 +218,8 @@ class _HomePageState extends State<HomePage> {
         name: currentCity,
         imageUrl: images[0] ?? '',
         subtitle: "Where am I?",
+        region: currentRegion,
+        province: currentProvince,
       ),
       SuggestedCity(
         name: "Loading...",
@@ -194,6 +234,8 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadNearbyCityAsynchronously(double lat, double lng, String currentCity) async {
     List<String> nearbyRaw = [];
     String nearbyCity = "Milano";
+    String? nearbyRegion;
+    String? nearbyProvince;
 
     try {
       nearbyRaw = await _osmService.getNearbyCities(lat, lng, radiusInKm: 25.0);
@@ -205,17 +247,23 @@ class _HomePageState extends State<HomePage> {
         nearbyRaw.shuffle();
         nearbyCity = nearbyRaw.first;
       } else {
-        final localFallbackList = List<String>.from(_italianCapitals)
-          ..removeWhere((city) => city.trim().toLowerCase() == currentCity.trim().toLowerCase())
-          ..shuffle();
-        nearbyCity = localFallbackList.first;
+        nearbyCity = "Milano";
+      }
+
+      // Fetch geo info for the nearby city
+      final locations = await locationFromAddress(nearbyCity).timeout(const Duration(seconds: 2), onTimeout: () => []);
+      if (locations.isNotEmpty) {
+        final placemarks = await placemarkFromCoordinates(
+          locations.first.latitude,
+          locations.first.longitude,
+        ).timeout(const Duration(seconds: 2), onTimeout: () => []);
+        if (placemarks.isNotEmpty) {
+          nearbyRegion = placemarks.first.administrativeArea;
+          nearbyProvince = placemarks.first.subAdministrativeArea;
+        }
       }
     } catch (e) {
       print("Errore background OSM: $e");
-      final localFallbackList = List<String>.from(_italianCapitals)
-        ..removeWhere((city) => city.trim().toLowerCase() == currentCity.trim().toLowerCase())
-        ..shuffle();
-      nearbyCity = localFallbackList.first;
     }
 
     final imageUrl = await _placesService.getPlacePhotoUrl(nearbyCity) ?? '';
@@ -229,6 +277,8 @@ class _HomePageState extends State<HomePage> {
           imageUrl: imageUrl,
           isLoading: false,
           subtitle: "Explore nearby",
+          region: nearbyRegion,
+          province: nearbyProvince,
         );
       }
     });
@@ -358,17 +408,10 @@ class _HomePageState extends State<HomePage> {
                               child: Stack(
                                 children: [
                                   if (city.isLoading)
-                                    const Center(
-                                      child: Padding(
-                                        padding: EdgeInsets.all(16.0),
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            CircularProgressIndicator(),
-                                            SizedBox(height: 12),
-                                          ],
-                                        ),
-                                      ),
+                                    Shimmer.fromColors(
+                                      baseColor: Colors.grey[300]!,
+                                      highlightColor: Colors.grey[100]!,
+                                      child: Container(color: Colors.white),
                                     )
                                   else ...[
                                     Positioned.fill(child: _buildImageWidgetFromUrl(city.imageUrl)),
@@ -417,11 +460,31 @@ class _HomePageState extends State<HomePage> {
                 child: Text("Explore other places", style: Theme.of(context).textTheme.titleMedium),
               ),
 
-              // Section 2: Explore other places (RIVOLUZIONATA: Niente più FutureBuilder, zero flash!)
+              // Section 2: Explore other places
               SizedBox(
                 height: 150,
                 child: _isExploreLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: 5,
+                        itemBuilder: (context, index) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                          child: Column(
+                            children: [
+                              Shimmer.fromColors(
+                                baseColor: Colors.grey[300]!,
+                                highlightColor: Colors.grey[100]!,
+                                child: Container(
+                                  width: 120, height: 120,
+                                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Container(width: 60, height: 12, color: Colors.grey[300]),
+                            ],
+                          ),
+                        ),
+                      )
                     : ListView.builder(
                   physics: const BouncingScrollPhysics(),
                   scrollDirection: Axis.horizontal,
@@ -477,18 +540,30 @@ class _HomePageState extends State<HomePage> {
                 child: Text("Still to be visited...", style: Theme.of(context).textTheme.titleMedium),
               ),
 
-              // Section 3: To Be Visited (Usa uno StreamBuilder nativo che gestisce la cache da solo)
+              // Section 3: To Be Visited
               SizedBox(
-                height: 200,
+                height: 150,
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('journeys')
-                      .where('state', isEqualTo: 'to_be_visited')
-                      .snapshots(),
+                  stream: _journeyStream,
                   builder: (context, snapshot) {
                     if (snapshot.hasError) return const Center(child: Text('Error loading data'));
+                    
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
+                      return ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: 3,
+                        itemBuilder: (context, index) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                          child: Shimmer.fromColors(
+                            baseColor: Colors.grey[300]!,
+                            highlightColor: Colors.grey[100]!,
+                            child: Container(
+                              width: 120, height: 120,
+                              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            ),
+                          ),
+                        ),
+                      );
                     }
 
                     final docs = snapshot.data!.docs;
@@ -500,51 +575,11 @@ class _HomePageState extends State<HomePage> {
                       itemCount: docs.length,
                       itemBuilder: (context, index) {
                         final journey = Journey.fromFirestore(docs[index]);
-                        final String locationName = journey.destinations.isNotEmpty ? journey.destinations.first : journey.name;
-
-                        return FutureBuilder<String?>(
-                          future: _placesService.getPlacePhotoUrl(locationName), // Legato alla cache interna del Service
-                          initialData: '',
-                          builder: (context, urlSnapshot) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                              child: Column(
-                                children: [
-                                  Container(
-                                    width: 120, height: 120,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Theme.of(context).colorScheme.primary, width: 3),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.1),
-                                          blurRadius: 10, offset: const Offset(0, 5),
-                                        ),
-                                      ],
-                                    ),
-                                    child: ClipOval(
-                                      child: Stack(
-                                        children: [
-                                          Positioned.fill(child: _buildImageWidgetFromUrl(urlSnapshot.data ?? '')),
-                                          Positioned.fill(
-                                            child: Material(
-                                              color: Colors.transparent,
-                                              child: InkWell(onTap: () => _showJourneyDetails(context, journey)),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    locationName,
-                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
+                        return _JourneyCircleItem(
+                          journey: journey, 
+                          placesService: _placesService,
+                          onTap: () => _showJourneyDetails(context, journey),
+                          imageBuilder: _buildImageWidgetFromUrl,
                         );
                       },
                     );
@@ -655,23 +690,24 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildImageWidgetFromUrl(String url) {
     if (url.isEmpty) {
-      return const Center(child: Icon(Icons.broken_image, color: Colors.grey));
+      return Container(
+        color: Colors.grey[200],
+      );
     }
 
     return CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.cover,
-      placeholder: (context, url) => Container(
-        color: Colors.grey[200],
-        child: const Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
+      fadeInDuration: const Duration(milliseconds: 500),
+      placeholder: (context, url) => Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: Container(color: Colors.white),
       ),
-      errorWidget: (context, url, error) => const Icon(Icons.error),
+      errorWidget: (context, url, error) => Container(
+        color: Colors.grey[200],
+        child: const Icon(Icons.error_outline, color: Colors.grey),
+      ),
     );
   }
 }
@@ -681,11 +717,93 @@ class SuggestedCity {
   final String imageUrl;
   final bool isLoading;
   final String? subtitle;
+  final String? region;
+  final String? province;
 
   SuggestedCity({
     required this.name,
     required this.imageUrl,
     this.isLoading = false,
     this.subtitle,
+    this.region,
+    this.province,
   });
+}
+
+class _JourneyCircleItem extends StatefulWidget {
+  final Journey journey;
+  final GooglePlacesService placesService;
+  final VoidCallback onTap;
+  final Widget Function(String) imageBuilder;
+
+  const _JourneyCircleItem({
+    required this.journey,
+    required this.placesService,
+    required this.onTap,
+    required this.imageBuilder,
+  });
+
+  @override
+  State<_JourneyCircleItem> createState() => _JourneyCircleItemState();
+}
+
+class _JourneyCircleItemState extends State<_JourneyCircleItem> {
+  late Future<String?> _imageFuture;
+  late String _locationName;
+
+  @override
+  void initState() {
+    super.initState();
+    _locationName = widget.journey.destinations.isNotEmpty 
+        ? widget.journey.destinations.first 
+        : widget.journey.name;
+    _imageFuture = widget.placesService.getPlacePhotoUrl(_locationName);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: _imageFuture,
+      builder: (context, urlSnapshot) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10.0),
+          child: Column(
+            children: [
+              Container(
+                width: 120, height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Theme.of(context).colorScheme.primary, width: 3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10, offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(child: widget.imageBuilder(urlSnapshot.data ?? '')),
+                      Positioned.fill(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(onTap: widget.onTap),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _locationName,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

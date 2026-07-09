@@ -107,7 +107,7 @@ class _WalletPageState extends State<WalletPage> {
       );
     }
     return Scaffold(
-      backgroundColor: Colors.white,
+      //backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
           'My Journeys ✈️',
@@ -169,11 +169,11 @@ class _WalletPageState extends State<WalletPage> {
               },
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.all(20.0),
+          Padding(
+            padding: const EdgeInsets.all(20.0),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text("My existing Trips", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text("My existing Trips", style: Theme.of(context).textTheme.titleMedium),
             ),
           ),
 
