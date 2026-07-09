@@ -60,20 +60,20 @@ class AppTheme {
       ),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: Color(0xFF354F52),
-      surfaceTintColor: Colors.white,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(25),
       ),
       titleTextStyle: const TextStyle(
         fontFamily: 'montserrat',
-        fontSize: 30,
+        fontSize: 24,
         fontWeight: FontWeight.bold,
-        color: Colors.white,
+        color: brandGreen,
       ),
       contentTextStyle: const TextStyle(
         fontSize: 16,
-        color: Colors.white,
+        color: Colors.black87,
       ),
     ),
     useMaterial3: true,
@@ -128,6 +128,23 @@ class AppTheme {
         )
     ),
     dividerTheme: const DividerThemeData(color: Colors.white24),
+    dialogTheme: DialogThemeData(
+      backgroundColor: const Color(0xFF2f3e46),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(25),
+      ),
+      titleTextStyle: const TextStyle(
+        fontFamily: 'montserrat',
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFFcad2c5),
+      ),
+      contentTextStyle: const TextStyle(
+        fontSize: 16,
+        color: Colors.white70,
+      ),
+    ),
     useMaterial3: true,
   );
 

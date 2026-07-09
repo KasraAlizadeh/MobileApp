@@ -197,12 +197,14 @@ class _WalletPageState extends State<WalletPage> {
   Widget _buildTripList() {
     return ListView.builder(
       itemCount: _trips.length,
+      padding: const EdgeInsets.only(bottom: 20), // Spazio extra in fondo
       itemBuilder: (context, index) {
         bool isDark = index % 2 != 0;
         final journey = _trips[index];
 
+        // Usiamo una combinazione di ID e Index per garantire l'unicità assoluta della chiave
         return Slidable(
-          key: ValueKey(journey.id),
+          key: ValueKey('${journey.id}_$index'),
           endActionPane: ActionPane(
             extentRatio: 0.4,
             motion: const ScrollMotion(),
@@ -229,28 +231,69 @@ class _WalletPageState extends State<WalletPage> {
               color: isDark ? const Color(0xFF3D5A5A) : const Color(0xFFD1D9D1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Material(
-              color: Colors.transparent,
-              child: ListTile(
-                title: Text(
-                  journey.name,
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              title: Text(
+                journey.name,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w500,
                 ),
-                onTap: () {
-                  // Navigate to view-only details page
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => JourneyDetailsPage(
-                        existingJourney: journey, // Pass your trip item reference object
-                        isReadOnly: true,         // Tells the page to lock down as retrieval-only!
-                      ),
-                    ),
-                  );
-                },
               ),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => JourneyDetailsPage(
+                      existingJourney: journey,
+                      isReadOnly: true,
+                    ),
+                  ),
+                );
+              },
+              onLongPress: () => _showTripOptions(index),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  void _showTripOptions(int index) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text(_trips[index].name, textAlign: TextAlign.center),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Choose an action:"),
+              const SizedBox(height: 10),
+              ListTile(
+                leading: const Icon(Icons.edit, color: Color(0xFF3D5A5A)),
+                title: const Text("Edit"),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  _handleEdit(index);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text("Delete", style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  _showConfirmDialog(context, "Delete", index);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+            ),
+          ],
         );
       },
     );
@@ -263,8 +306,6 @@ class _WalletPageState extends State<WalletPage> {
         bool isDelete = action == "Delete";
 
         return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
