@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'journey.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -30,13 +31,15 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   final TextEditingController _insuranceController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   final List<String> _transportModes = ['Airline', 'Train', 'Taxi', 'Metro', 'Bus', 'Ship'];
+  final List<Map<String, dynamic>> _extraDocs = [{'name': TextEditingController(), 'fileName': 'No file selected'}];
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
+  String _selectedType = 'Travel Type';
   File? _newVisaFile, _newTicketFile, _newInsuranceFile;
   List<String> _finalPdfUrls = ["", "", ""]; // IN ORDER [Visa, Ticket, Insurance]
+  List<String> _existingPhotoUrls = []; // Track photos fetched from Firestore
+  List<File> _newPhotosToUpload = [];   // Track new photos selected in this session
   List<String> pdfUrls = [];
-  final List<Map<String, dynamic>> _extraDocs = [{'name': TextEditingController(), 'fileName': 'No file selected'}];
-  String _selectedType = 'Travel Type';
   List<TextEditingController> _destControllers = [TextEditingController()];
   List<Map<String, dynamic>> _transportRows = [{'mode': 'Airline', 'controller': TextEditingController()}];
   List<Map<String, dynamic>> _accommodationRows = [
@@ -49,6 +52,25 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   List<Map<String, dynamic>> _activityRows = [
     {'activity': TextEditingController(), 'place': TextEditingController()}
   ];
+  List<String> _extractText(List<TextEditingController> controllers) {
+    return controllers
+        .map((c) => c.text.trim())
+        .where((text) => text.isNotEmpty)
+        .toList();
+  }
+  List<Map<String, dynamic>> _extractRows(List<Map<String, dynamic>> rows) {
+    return rows.map((row) {
+      final Map<String, dynamic> cleanRow = {};
+      row.forEach((key, value) {
+        if (value is TextEditingController) {
+          cleanRow[key] = value.text.trim();
+        } else {
+          cleanRow[key] = value;
+        }
+      });
+      return cleanRow;
+    }).toList();
+  }
 
   Future<void> _selectDate(BuildContext context, TextEditingController controller, bool isStartDate) async {
     DateTime now = DateTime.now();
@@ -123,6 +145,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                   content: Text("Start date changed! Please re-verify your End Date. 🔄"),
                   backgroundColor: Colors.blueGrey,
                 ),
+
               );
             }
           } catch (_) {}
@@ -171,27 +194,12 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       debugPrint("File picker error: $e");
     }
   }
-  List<String> _extractText(List<TextEditingController> controllers) {
-    return controllers
-        .map((c) => c.text.trim())
-        .where((text) => text.isNotEmpty)
-        .toList();
-  }
-  List<Map<String, dynamic>> _extractRows(List<Map<String, dynamic>> rows) {
-    return rows.map((row) {
-      final Map<String, dynamic> cleanRow = {};
-      row.forEach((key, value) {
-        if (value is TextEditingController) {
-          cleanRow[key] = value.text.trim();
-        } else {
-          cleanRow[key] = value;
-        }
-      });
-      return cleanRow;
-    }).toList();
-  }
-  Future<String> _upload(String name, File file, String folder) async {
-    Reference ref = FirebaseStorage.instance.ref().child('pdfs/$folder/$name');
+  Future<String> _upload(String fileName, File file, String userId, String journeyId, String subFolder) async {
+
+    Reference ref = FirebaseStorage.instance
+        .ref()
+        .child('media/$userId/$journeyId/$subFolder/$fileName');
+
     await ref.putFile(file);
     return await ref.getDownloadURL();
   }
@@ -238,8 +246,12 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         throw Exception("No authorized user found!");
       }
       String userId = currentUser.uid;
+      String targetJourneyId;
+      DocumentReference docRef;
       // check if we are in EDIT mode and if the name actually changed
       if (widget.existingJourney != null) {
+        targetJourneyId = widget.existingJourney!.id;
+        docRef = FirebaseFirestore.instance.collection('journeys').doc(targetJourneyId);
         String oldFolder = widget.existingJourney!.name;
 
         if (oldFolder != newFolder) {
@@ -247,13 +259,24 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
           // xecute the folder move operation for existing files
           _finalPdfUrls = await _moveStorageFolder(oldFolder, newFolder, _finalPdfUrls);
         }
+      }else {
+        // Create a fresh doc reference beforehand to claim its unique auto-generated ID
+        docRef = FirebaseFirestore.instance.collection('journeys').doc();
+        targetJourneyId = docRef.id;
       }
 
       // handle any brand new file uploads picked during this session
-      if (_newVisaFile != null) _finalPdfUrls[0] = await _upload("visa.pdf", _newVisaFile!, newFolder);
-      if (_newTicketFile != null) _finalPdfUrls[1] = await _upload("ticket.pdf", _newTicketFile!, newFolder);
-      if (_newInsuranceFile != null) _finalPdfUrls[2] = await _upload("insurance.pdf", _newInsuranceFile!, newFolder);
+      if (_newVisaFile != null) _finalPdfUrls[0] = await _upload("visa.pdf", _newVisaFile!, userId, targetJourneyId, "pdfs");
+      if (_newTicketFile != null) _finalPdfUrls[1] = await _upload("ticket.pdf", _newTicketFile!, userId, targetJourneyId, "pdfs");
+      if (_newInsuranceFile != null) _finalPdfUrls[2] = await _upload("insurance.pdf", _newInsuranceFile!,userId, targetJourneyId, "pdfs");
+      List<String> freshlyUploadedPhotoUrls = [];
+      for (int i = 0; i < _newPhotosToUpload.length; i++) {
+        String fileName = "img_${DateTime.now().millisecondsSinceEpoch}_$i.jpg";
+        String downloadUrl = await _upload(fileName, _newPhotosToUpload[i], userId, targetJourneyId, "images");
+        freshlyUploadedPhotoUrls.add(downloadUrl);
+      }
 
+      List<String> consolidatedPhotoUrls = [..._existingPhotoUrls, ...freshlyUploadedPhotoUrls];
       Map<String, dynamic> journeyData = {
         'userId': userId,
         'name': newFolder,
@@ -266,23 +289,17 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         'activities': _extractRows(_activityRows),
         'notes': _notesController.text.trim(),
         'pdfUrls': _finalPdfUrls,
+        'photoUrls': consolidatedPhotoUrls,
         'state': 'to_be_visited',
         'fcmToken': fcmToken,
       };
-
-      if (widget.existingJourney != null) {
-        await FirebaseFirestore.instance.collection('journeys').doc(widget.existingJourney!.id).update(journeyData);
-      } else {
-        await FirebaseFirestore.instance.collection('journeys').add(journeyData);
-      }
+      await docRef.set(journeyData, SetOptions(merge: true));
 
       print("✅ Successfully saved and synced files to updated folder paths!");
     } catch (e) {
-      print("❌ Firebase Storage/Firestore Sync Errr: $e");
-      setState(() {
-        _isSaving = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error saving details: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error saving journey: $e")));
+    } finally {
+      setState(() => _isSaving = false);
     }
   }
   @override
@@ -303,11 +320,11 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       for (int i = 0; i < j.pdfUrls.length && i < 3; i++) {
         _finalPdfUrls[i] = j.pdfUrls[i];
       }
-
       // Update Text to show user there is a file saved
       if (_finalPdfUrls[0].isNotEmpty) _visaController.text = "Existing Visa PDF";
       if (_finalPdfUrls[1].isNotEmpty) _ticketController.text = "Existing Ticket PDF";
       if (_finalPdfUrls[2].isNotEmpty) _insuranceController.text = "Existing Insurance PDF";
+      _existingPhotoUrls = List<String>.from(j.imageUrls);
       //  Destintions List
       if (j.destinations.isNotEmpty) {
         _destControllers = j.destinations.map((d) => TextEditingController(text: d)).toList();
@@ -337,13 +354,26 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         }).toList();
       }
     } else {
-      // --- WE ARE IN ADD MODE --
       _nameController = TextEditingController();
       _destControllers = [TextEditingController()];
     }
   }
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final List<XFile> images = await picker.pickMultiImage(
+      imageQuality: 80,
+    );
+    if (images.isNotEmpty) {
+      setState(() {
+        _newPhotosToUpload.addAll(
+            images.map((xFile) => File(xFile.path)).toList()
+        );
+      });
+    }
+  }
   @override
   Widget build(BuildContext context) {
+    bool isEditOrViewMode = widget.existingJourney != null;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -432,7 +462,52 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-
+                      if (isEditOrViewMode) ...[
+                        _buildSectionWrapper(
+                          title: "Journey Memories 📸",
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Photo Collection Gallery View
+                              if (_existingPhotoUrls.isEmpty && _newPhotosToUpload.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  child: Text("No photos uploaded yet.", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey)),
+                                )
+                              else
+                                GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: _existingPhotoUrls.length + _newPhotosToUpload.length,
+                                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
+                                  itemBuilder: (context, idx) {
+                                    if (idx < _existingPhotoUrls.length) {
+                                      return ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.network(_existingPhotoUrls[idx], fit: BoxFit.cover),
+                                      );
+                                    } else {
+                                      int localIdx = idx - _existingPhotoUrls.length;
+                                      return ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.file(_newPhotosToUpload[localIdx], fit: BoxFit.cover),
+                                      );
+                                    }
+                                  },
+                                ),
+                              const SizedBox(height: 15),
+                              if (!widget.isReadOnly)
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3D5A5A), foregroundColor: Colors.white),
+                                  onPressed: _pickImage,
+                                  icon: const Icon(Icons.add_a_photo),
+                                  label: const Text("Add Photo"),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       _buildSectionWrapper(
                         title: "Transportation Info",
                         child: Column(
@@ -736,15 +811,11 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       ),
     );
   }
-
-
-  Widget _buildTextField(
-      String hint,
+  Widget _buildTextField(String hint,
       TextEditingController controller,
       {IconData? icon, VoidCallback? onIconTap, Color? iconColor, bool readOnly = false, bool isMandatory = false} // Added isMandatory
       )
-  {
-    return TextFormField(
+  {return TextFormField(
       controller: controller,
       readOnly: widget.isReadOnly ? true : readOnly,
       onTap: (widget.isReadOnly ? null : (readOnly ? onIconTap : null)),
@@ -766,8 +837,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
       ),
-    );
-  }
+    );}
 
   Widget _buildSectionWrapper({required String title, required Widget child}) {
     return Container(
@@ -797,9 +867,20 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         child: DropdownButton<String>(
           isExpanded: true,
           value: _selectedType == 'Travel Type' ? null : _selectedType,
-          hint: const Text("Travel Type", style: TextStyle(fontSize: 12)),
+          hint: const Text("Travel Type", style: TextStyle(fontSize: 12)),style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.normal,
+          color: Colors.black87,
+        ),
           items: <String>['Business', 'Vacation', 'Family'].map((String value) {
-            return DropdownMenuItem<String>(value: value, child: Text(value));
+            return DropdownMenuItem<String>(value: value, child: Text(value,
+            style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.normal, // Removes bold styling inside the popup
+                color: Colors.black87,
+            )
+            )
+            );
           }).toList(),
           onChanged: (val) => setState(() => _selectedType = val!),
         ),

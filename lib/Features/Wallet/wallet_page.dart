@@ -54,10 +54,18 @@ class _WalletPageState extends State<WalletPage> {
       _fetchJourneysFromFirestore();
     }
   }
-
+  Future<void> _refreshData() async {
+    setState(() {
+      _isLoading = true; // Show the custom screen loading spinners
+      _trips.clear();    // Flush existing entries to prevent UI flashes
+    });
+    await _fetchJourneysFromFirestore();
+  }
   // one time fetch logic
   Future<void> _fetchJourneysFromFirestore() async {
-    setState(() => _isLoading = true);
+    if (!_isLoading) {
+      setState(() => _isLoading = true);
+    }
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
@@ -71,7 +79,7 @@ class _WalletPageState extends State<WalletPage> {
 
       // convert Firestore documents into Journey objects
       List<Journey> loadedTrips = snapshot.docs.map((doc) {
-        return Journey.fromFirestore(doc); // Ensure your journey.dart has this factory!
+        return Journey.fromFirestore(doc);
       }).toList();
 
       setState(() {
@@ -108,110 +116,134 @@ class _WalletPageState extends State<WalletPage> {
     }
     return Scaffold(
       //backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text(
           'My Journeys ✈️',
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 20),
+      body:RefreshIndicator(
+        onRefresh: _refreshData, // Points to the fresh refresh tracking sequence
+        color: const Color(0xFF3D5A5A), // Matches the primary branding color
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            const SizedBox(height: 20),
 
-          // add button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF3D5A5A),
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            // Add Button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3D5A5A),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    inherit: true, // Force agreement between the light/dark transition layers
+                  ),
+                ),
+                onPressed: () async {
+                  final bool? didSaveNewTrip = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const JourneyDetailsPage()),
+                  );
+
+                  if (didSaveNewTrip == true) {
+                    _fetchJourneysFromFirestore();
+                  }
+                },
+
+                child: Text(
+                  'Add a new journey',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-              onPressed: () async {
-                // Navigate and wait to see if the user saved a new journey
-                final bool? didSaveNewTrip = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const JourneyDetailsPage()),
-                );
-
-                // if the details page returns 'true', re-fetch the data!
-                if (didSaveNewTrip == true) {
-                  _fetchJourneysFromFirestore();
-                }
-              },
-              child: const Text('Add a new journey', style: TextStyle(color: Colors.white)),
             ),
-          ),
-          const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange.shade800,
-                minimumSize: const Size(double.infinity, 45),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            const SizedBox(height: 10),
+
+            // Force Notification Button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade800,
+                  minimumSize: const Size(double.infinity, 45),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    inherit: true,
+                  ),
+                ),
+                icon: const Icon(Icons.flash_on, color: Colors.white),
+
+                label: Text(
+                  '⚡ FORCE NOTIFICATION NOW',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onPressed: () async {
+                  print("🚀 Forcing local notification trigger...");
+                  String testJourneyId = _trips.isNotEmpty ? _trips.first.id : "test_journey_id_123";
+                  String testJourneyName = _trips.isNotEmpty ? _trips.first.name : "Test Trip to Rome";
+
+                  await NotificationService.showTripNotification(
+                      testJourneyId,
+                      testJourneyName
+                  );
+                },
               ),
-              icon: const Icon(Icons.flash_on, color: Colors.white),
-              label: const Text('⚡ FORCE NOTIFICATION NOW', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              onPressed: () async {
-                print("🚀 Forcing local notification trigger...");
-
-                // If we have journeys loaded, pass the actual ID of the first item
-                // to test real database modifications; otherwise, use a fallback string.
-                String testJourneyId = _trips.isNotEmpty ? _trips.first.id : "test_journey_id_123";
-                String testJourneyName = _trips.isNotEmpty ? _trips.first.name : "Test Trip to Rome";
-
-                // This triggers your service layout instantly
-                await NotificationService.showTripNotification(
-                    testJourneyId,
-                    testJourneyName
-                );
-              },
             ),
-          ),
+
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text("My existing Trips", style: Theme.of(context).textTheme.titleMedium),
+              child: Text(
+                  "My existing Trips",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                  )
+              ),
             ),
           ),
 
-          // handling list or empty messages
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A)))
-                : _trips.isEmpty
-                ? _buildEmptyState()
-                : _buildTripList(),
-          ),
+          // Handling list or empty messages
+          _isLoading
+              ? const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A))),
+          )
+              : _trips.isEmpty
+              ? _buildEmptyState()
+              : _buildTripList(),
         ],
       ),
-    );
+    ));
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40.0),
-        child: Text(
-          "Are you boring?, letzzz go somewhere! 🌍",
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey[600], fontSize: 16, fontStyle: FontStyle.italic),
-        ),
-      ),
-    );
-  }
-
+  // Updated to use simple un-bounded listing rendering structure
   Widget _buildTripList() {
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: _trips.length,
       itemBuilder: (context, index) {
         bool isDark = index % 2 != 0;
         final journey = _trips[index];
 
         return Slidable(
-          key: ValueKey(journey.id),
+          key: Key('slidable_${journey.id}_${Theme.of(context).brightness.name}_$index'),
           endActionPane: ActionPane(
             extentRatio: 0.4,
             motion: const ScrollMotion(),
@@ -246,13 +278,12 @@ class _WalletPageState extends State<WalletPage> {
                   style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                 ),
                 onTap: () {
-                  // Navigate to view-only details page
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => JourneyDetailsPage(
-                        existingJourney: journey, // Pass your trip item reference object
-                        isReadOnly: true,         // Tells the page to lock down as retrieval-only!
+                        existingJourney: journey,
+                        isReadOnly: true,
                       ),
                     ),
                   );
@@ -264,7 +295,18 @@ class _WalletPageState extends State<WalletPage> {
       },
     );
   }
-
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Text(
+          "Are you boring?, letzzz go somewhere! 🌍",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey[600], fontSize: 16, fontStyle: FontStyle.italic),
+        ),
+      ),
+    );
+  }
   void _showConfirmDialog(BuildContext context, String action, int index) {
     showDialog(
       context: context,
@@ -283,7 +325,9 @@ class _WalletPageState extends State<WalletPage> {
                     ? "Are you sure you want to delete this trip and its files?"
                     : "Are you sure you want to edit this trip?",
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w500),
+                style: TextStyle(fontWeight: FontWeight.w500,
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                ),
               ),
               const SizedBox(height: 20),
               Row(
@@ -295,7 +339,7 @@ class _WalletPageState extends State<WalletPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text("Cancel", style: TextStyle(color: Colors.white)),
+                    child: const Text("Cancel", style: TextStyle(color: Colors.white, inherit: true,)),
                   ),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -312,7 +356,7 @@ class _WalletPageState extends State<WalletPage> {
                     },
                     child: Text(
                       action,
-                      style: TextStyle(color: isDelete ? Colors.white : Colors.black),
+                      style: TextStyle(color: isDelete ? Colors.white : Colors.black, inherit: true,),
                     ),
                   ),
                 ],
@@ -334,12 +378,36 @@ class _WalletPageState extends State<WalletPage> {
     });
 
     try {
-      // background Task: Delete all connected PDFs in Firebase Storage
+      String userId = tripToDelete.userId;
+      String journeyId = tripToDelete.id;
+
+      if (userId.isNotEmpty && journeyId.isNotEmpty) {
+        print("🗑️ Wiping storage contents for path: media/$userId/$journeyId/");
+
+        // 1. Wipe the entire 'pdfs' subfolder content
+        final ListResult pdfsDir = await FirebaseStorage.instance
+            .ref()
+            .child('media/$userId/$journeyId/pdfs')
+            .listAll();
+        for (Reference fileRef in pdfsDir.items) {
+          await fileRef.delete();
+        }
+
+        // 2. Wipe the entire 'images' subfolder content
+        final ListResult imagesDir = await FirebaseStorage.instance
+            .ref()
+            .child('media/$userId/$journeyId/images')
+            .listAll();
+        for (Reference fileRef in imagesDir.items) {
+          await fileRef.delete();
+        }
+      }
+      /*// background Task: Delete all connected PDFs in Firebase Storage
       if (tripToDelete.pdfUrls.isNotEmpty) {
         for (String url in tripToDelete.pdfUrls) {
           await FirebaseStorage.instance.refFromURL(url).delete();
         }
-      }
+      }*/
 
       // background Task: Delete the Firestore document
       await FirebaseFirestore.instance.collection('journeys').doc(tripToDelete.id).delete();
