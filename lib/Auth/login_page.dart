@@ -1,7 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
-import '../main.dart';
 import 'signup_page.dart';
 import '../Services/dialog_service.dart';
 
@@ -13,18 +11,17 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  final _formKey = GlobalKey<FormState>(); // Global key for Form validation
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
 
   Future<void> _login() async {
+    // If validation fails, stop execution
+    if (!_formKey.currentState!.validate()) return;
+
     final email = _emailController.text.trim();
     final password = _passwordController.text;
-
-    if (email.isEmpty || password.isEmpty) {
-      DialogService.showErrorDialog(context, "Inserisci email e password");
-      return;
-    }
 
     setState(() {
       _isLoading = true;
@@ -38,12 +35,9 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const MainPage(title: "Welcome home!"),
-        ),
-      );
+      // Pop back to the initial route (AuthGate), which detects the signed-in user
+      // and shows the MainPage automatically, keeping the navigation stack clean.
+      Navigator.of(context).popUntil((route) => route.isFirst);
 
     } on FirebaseAuthException catch (e) {
       String message = "Error during access";
@@ -79,59 +73,81 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Login")),
-      body: Padding(
+      body: SingleChildScrollView( // Prevents overflow when keyboard opens
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: "Email",
-                prefixIcon: Icon(Icons.email),
+        child: Form(
+          key: _formKey, // Connect form to the global key
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 40),
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(
+                  labelText: "Email",
+                  prefixIcon: Icon(Icons.email),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return "Please enter your email";
+                  }
+                  if (!RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+                    return "Please enter a valid email address";
+                  }
+                  return null;
+                },
               ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: "Password",
-                prefixIcon: Icon(Icons.lock),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _passwordController,
+                decoration: const InputDecoration(
+                  labelText: "Password",
+                  prefixIcon: Icon(Icons.lock),
+                ),
+                obscureText: true,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return "Please enter your password";
+                  }
+                  return null;
+                },
               ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 20),
-            _isLoading
-                ? const CircularProgressIndicator()
-                : SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _login,
-                      style: Theme.of(context).elevatedButtonTheme.style,
-                      child: const Text("Log In", style: TextStyle(color: Colors.white)),
-                    ),
-                  ),
-            TextButton(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SignUpPage()),
-                );
+              const SizedBox(height: 20),
+              _isLoading
+                  ? const CircularProgressIndicator()
+                  : SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _login,
+                  style: Theme.of(context).elevatedButtonTheme.style,
+                  child: const Text("Log In", style: TextStyle(color: Colors.white)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () async {
+                  // Await registration result from SignUpPage
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SignUpPage()),
+                  );
 
-                if (!context.mounted) return;
+                  if (!context.mounted) return;
 
-                if (result != null) {
-                  _emailController.text = result["email"] ?? "";
-                  _passwordController.text = result["password"] ?? "";
+                  // If user completed registration, auto-fill credentials
+                  if (result != null && result is Map<String, String>) {
+                    _emailController.text = result["email"] ?? "";
+                    _passwordController.text = result["password"] ?? "";
 
-                  DialogService.showSuccessSnackBar(context, "Registration completed, now you can access");
-                }
-              },
-              child: const Text("No account yet? Sign up"),
-            ),
-          ],
+                    DialogService.showSuccessSnackBar(context, "Registration completed, now you can access");
+                  }
+                },
+                child: const Text("No account yet? Sign up"),
+              ),
+            ],
+          ),
         ),
       ),
     );

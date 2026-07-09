@@ -272,7 +272,7 @@ class _WalletPageState extends State<WalletPage> {
               const SizedBox(height: 10),
               ListTile(
                 leading: const Icon(Icons.edit, color: Color(0xFF3D5A5A)),
-                title: const Text("Edit"),
+                title: Text("Edit", style: Theme.of(context).dialogTheme.contentTextStyle),
                 onTap: () {
                   Navigator.pop(dialogContext);
                   _handleEdit(index);
