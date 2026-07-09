@@ -5,8 +5,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'Wallet/journey.dart';
 
 String apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
+
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -16,10 +18,29 @@ class SearchPage extends StatefulWidget {
 
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _aiSearchController = TextEditingController();
+  final DraggableScrollableController _sheetController = DraggableScrollableController();
   bool _isAiLoading = false;
   String _aiResponseTitle = "AI Travel Assistant 🧠";
-  List<String> _aiRecommendations = [
-    "Type a destination below to get instant AI-curated spots, local dishes to try, and hidden gems!",
+  String _selectedCategory = 'All';
+
+  // 🌟 THE FIX: Store the sheet size dynamically in state so it survives rebuilds
+  double _currentSheetSize = 0.35;
+
+  final List<Map<String, dynamic>> _categories = [
+    {'id': 'All', 'label': 'Overview', 'icon': Icons.explore},
+    {'id': 'Food', 'label': 'Local Food', 'icon': Icons.restaurant},
+    {'id': 'History', 'label': 'Historic', 'icon': Icons.account_balance},
+    {'id': 'Adventure', 'label': 'Adventure', 'icon': Icons.terrain},
+    {'id': 'Stays', 'label': 'Top Stays', 'icon': Icons.hotel},
+  ];
+
+  List<Map<String, String>> _allRecommendations = [
+    {
+      'category': 'All',
+      'emoji': '🗺️',
+      'title': 'Welcome to Journey Explorer',
+      'body': 'Tap a pin or enter a city to unlock local dishes, top restaurants, landmarks, hidden adventures, and accommodation hubs!'
+    }
   ];
 
   Color _getMarkerColor(String? state) {
@@ -30,53 +51,75 @@ class _SearchPageState extends State<SearchPage> {
       default: return Colors.grey;
     }
   }
-//connecting google AI agent API for suggestions
+
   Future<void> _askAiAgent(String city) async {
     if (city.trim().isEmpty) return;
 
     setState(() {
-      _isAiLoading = true; // Triggers the loading spinner safely
+      _isAiLoading = true;
     });
 
+    // Animate up smoothly
+    _sheetController.animateTo(
+      0.80,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+
     try {
-      // Initialize the Gemini Model (here i go with gemini 2.5 model)
       final model = GenerativeModel(
         model: 'gemini-2.5-flash',
         apiKey: apiKey,
       );
 
-      // giving a testing prompt to generate a response
-      final prompt = "You are an expert travel AI agent. Provide 3 quick, short bullet points for the city of $city. "
-          "Point 1 must be a 'Must Visit' landmark. "
-          "Point 2 must be a 'Hidden Gem' restaurant or area. "
-          "Point 3 must be a 'Local Tip'. Keep each point under 15 words and start with emojis.";
+      final prompt = "You are an expert commercial travel travel agent. Provide a detailed guide for $city. "
+          "You must generate exactly 7 points following this precise tokenization syntax (no headers, no markdown bolding):\n"
+          "All | 🏛️ | Must Visit | Short description of top landmark\n"
+          "All | 💎 | Hidden Gem | Short description of a unique local spot\n"
+          "Food | 🍝 | Local Dishes | List 2 typical local foods to try\n"
+          "Food | 🍴 | Best Restaurant | Name a top rated dining venue and specialty\n"
+          "History | 📜 | History Spot | Name a notable historic site or monument\n"
+          "Adventure | 🎒 | Adventure Action | Mention an outdoor activity or exciting tour option\n"
+          "Stays | 🏨 | Recommended Stay | Mention the best neighborhood or top-rated hotel option\n"
+          "Keep each description under 15 words.";
 
-      // using await to keep the app alive while waiting for the network response
       final response = await model.generateContent([Content.text(prompt)]);
       final String? responseText = response.text;
 
       if (responseText != null && responseText.isNotEmpty) {
-        // here spliting the text response by line breaks to feed your clean list view
         List<String> rawLines = responseText.split('\n');
-        List<String> cleanLines = rawLines.where((line) => line.trim().isNotEmpty).toList();
+        List<Map<String, String>> parsingList = [];
+
+        for (var line in rawLines) {
+          if (!line.contains('|')) continue;
+          List<String> segments = line.split('|');
+          if (segments.length >= 4) {
+            parsingList.add({
+              'category': segments[0].trim(),
+              'emoji': segments[1].trim(),
+              'title': segments[2].trim(),
+              'body': segments[3].trim(),
+            });
+          }
+        }
 
         setState(() {
-          _aiResponseTitle = "AI Insights for ${city.trim()} ✨";
-          _aiRecommendations = cleanLines;
+          _aiResponseTitle = "AI Curation for ${city.trim()} ✨";
+          _selectedCategory = 'All';
+          _allRecommendations = parsingList.isNotEmpty ? parsingList : [
+            {'category': 'All', 'emoji': '✨', 'title': 'Guide Generated', 'body': responseText.trim()}
+          ];
           _isAiLoading = false;
         });
       } else {
-        throw Exception("Empty response received from AI agent.");
+        throw Exception("Empty payload response metadata state.");
       }
-
     } catch (err) {
-      print("AI Agent Error: $err"); //just for checking
       setState(() {
         _aiResponseTitle = "AI Assistant Offline ❌";
-        _aiRecommendations = [
-          "Could not reach the travel agent right now.",
-          "Error details: ${err.toString().split(':').last}",
-          "Please verify your API key and internet connection."
+        _allRecommendations = [
+          {'category': 'All', 'emoji': '⚠️', 'title': 'Connection Error', 'body': 'Could not reach the travel agent right now.'},
+          {'category': 'All', 'emoji': '🔧', 'title': 'Details', 'body': err.toString().split(':').last}
         ];
         _isAiLoading = false;
       });
@@ -101,29 +144,20 @@ class _SearchPageState extends State<SearchPage> {
             localMarkers.add(
               Marker(
                 point: LatLng(targetLocation.latitude, targetLocation.longitude),
-                width: 80.0,
-                height: 80.0,
+                width: 50.0,
+                height: 50.0,
                 child: GestureDetector(
                   onTap: () {
-                    // clicking a pin automatically feeds that city to our AI Assistant!
                     _aiSearchController.text = cityName;
                     _askAiAgent(cityName);
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Analyzing $cityName with AI...'),
-                        backgroundColor: _getMarkerColor(state),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
                   },
-                  child: Icon(Icons.location_on, size: 45.0, color: _getMarkerColor(state)),
+                  child: Icon(Icons.location_on, size: 40.0, color: _getMarkerColor(state)),
                 ),
               ),
             );
           }
         } catch (e) {
-          print("Could not locate '$cityName': $e");
+          debugPrint("Location error: $e");
         }
       }
     }
@@ -133,12 +167,10 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
-        title: const Text(
-          'Journey Explorer 🗺️',
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: const Text('Journey Explorer 🗺️', overflow: TextOverflow.ellipsis),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('journeys').snapshots(),
@@ -150,11 +182,10 @@ class _SearchPageState extends State<SearchPage> {
 
           final documents = snapshot.data?.docs ?? [];
 
-          return Column(
+          return Stack(
             children: [
-              // map view
-              Expanded(
-                flex: 55,
+              // Map View Layer
+              Positioned.fill(
                 child: FutureBuilder<List<Marker>>(
                   future: _buildMarkersFromTripNames(documents, context),
                   builder: (context, markerSnapshot) {
@@ -162,7 +193,7 @@ class _SearchPageState extends State<SearchPage> {
                     LatLng initialCenter = markers.isNotEmpty ? markers.first.point : const LatLng(41.9028, 12.4964);
 
                     return FlutterMap(
-                      options: MapOptions(initialCenter: initialCenter, initialZoom: 4.0),
+                      options: MapOptions(initialCenter: initialCenter, initialZoom: 4.5),
                       children: [
                         TileLayer(
                           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -175,87 +206,169 @@ class _SearchPageState extends State<SearchPage> {
                 ),
               ),
 
-              // ai agent cntrol panel
-              Expanded(
-                flex: 45,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(20),
-                      topRight: Radius.circular(20),
-                    ),
-                    boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -3))],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // AI Header Text
-                        Text(
-                          _aiResponseTitle,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF3D5A5A)),
-                        ),
-                        const SizedBox(height: 10),
+              // Swipeable AI Sheet Panel
+              SafeArea(
+                top: false, left: false, right: false, bottom: true,
+                child: NotificationListener<DraggableScrollableNotification>(
+                  // 🌟 FIX: Listen to the user dragging the sheet and save its size in real-time
+                  onNotification: (notification) {
+                    _currentSheetSize = notification.extent;
+                    return true;
+                  },
+                  child: DraggableScrollableSheet(
+                    controller: _sheetController,
+                    // 🌟 FIX: Feed the saved state size back into the sheet configurations
+                    initialChildSize: _currentSheetSize,
+                    minChildSize: 0.35,
+                    maxChildSize: 0.85,
+                    snap: true,
+                    builder: (context, scrollController) {
+                      final filteredList = _allRecommendations.where((item) {
+                        if (_selectedCategory == 'All') return true;
+                        return item['category'] == _selectedCategory;
+                      }).toList();
 
-                        // Scrollable AI Suggestions Container
-                        Expanded(
-                          child: _isAiLoading
-                              ? const Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A)))
-                              : ListView.builder(
-                            itemCount: _aiRecommendations.length,
-                            itemBuilder: (context, index) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                child: Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF0F4F4),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    _aiRecommendations[index],
-                                    style: const TextStyle(fontSize: 13, color: Colors.black87),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, -2))],
                         ),
-                        const SizedBox(height: 10),
-
-                        // AI Search Bar Input Box Row
-                        Row(
+                        child: Stack(
                           children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _aiSearchController,
-                                decoration: InputDecoration(
-                                  hintText: "Ask AI about any city...",
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFF3D5A5A), width: 2),
+                            // Main Scrolling Body Context
+                            Positioned.fill(
+                              bottom: 80,
+                              child: ListView(
+                                controller: scrollController,
+                                padding: const EdgeInsets.only(top: 12, bottom: 16),
+                                children: [
+                                  // Center Pull Handle Bar
+                                  Center(
+                                    child: Container(
+                                      width: 40, height: 5,
+                                      decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(10)),
+                                    ),
                                   ),
+                                  const SizedBox(height: 12),
+
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                                    child: Text(
+                                      _aiResponseTitle,
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // Horizontal Category Filter Selection Tab Bar
+                                  SizedBox(
+                                    height: 38,
+                                    child: ListView.builder(
+                                      scrollDirection: Axis.horizontal,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                                      itemCount: _categories.length,
+                                      itemBuilder: (context, idx) {
+                                        final cat = _categories[idx];
+                                        bool isSelected = _selectedCategory == cat['id'];
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                          child: ChoiceChip(
+                                            avatar: Icon(cat['icon'], size: 16, color: isSelected ? Colors.white : const Color(0xFF3D5A5A)),
+                                            label: Text(cat['label'], style: const TextStyle(fontSize: 12)),
+                                            selected: isSelected,
+                                            selectedColor: const Color(0xFF3D5A5A),
+                                            onSelected: (bool selected) {
+                                              // 🌟 FIX: Tab switching now changes data without resetting layout sizes
+                                              setState(() {
+                                                _selectedCategory = cat['id'];
+                                              });
+                                            },
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 16),
+                                    child: Divider(height: 24),
+                                  ),
+
+                                  // Curation Recommendation Cards
+                                  if (_isAiLoading)
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 40),
+                                      child: Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A))),
+                                    )
+                                  else if (filteredList.isEmpty)
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 40),
+                                      child: Center(
+                                        child: Text(
+                                          "No recommendations here. Tap another tab!",
+                                          style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey),
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    ...filteredList.map((item) {
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                        child: Card(
+                                          elevation: 0,
+                                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          child: ListTile(
+                                            leading: Text(item['emoji'] ?? '📍', style: const TextStyle(fontSize: 24)),
+                                            title: Text(item['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                            subtitle: Padding(
+                                              padding: const EdgeInsets.only(top: 4.0),
+                                              child: Text(item['body'] ?? '', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                ],
+                              ),
+                            ),
+
+                            // Sticky Action Footer Input Bar
+                            Positioned(
+                              left: 0, right: 0, bottom: 0,
+                              child: Container(
+                                color: Theme.of(context).scaffoldBackgroundColor,
+                                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _aiSearchController,
+                                        decoration: InputDecoration(
+                                          hintText: "Ask AI about any city...",
+                                          fillColor: Theme.of(context).cardColor,
+                                          filled: true,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    FloatingActionButton.small(
+                                      backgroundColor: const Color(0xFF3D5A5A),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                      onPressed: () => _askAiAgent(_aiSearchController.text),
+                                      child: const Icon(Icons.auto_awesome),
+                                    )
+                                  ],
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFF3D5A5A),
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              icon: const Icon(Icons.auto_awesome),
-                              onPressed: () => _askAiAgent(_aiSearchController.text),
-                            )
                           ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ),
