@@ -374,7 +374,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Section 1: Suggested Cities
+              // Section 1: Suggested Cities (Anti-glitch smooth transition)
               SizedBox(
                 height: 250,
                 child: ListView.builder(
@@ -398,22 +398,55 @@ class _HomePageState extends State<HomePage> {
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(25),
                               border: Border.all(color: Theme.of(context).colorScheme.primary, width: 3),
-                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5))],
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 5),
+                                )
+                              ],
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(22),
-                              child: Stack(
-                                children: [
-                                  if (city.isLoading)
-                                    const Center(child: CircularProgressIndicator())
-                                  else ...[
+                              // AnimatedSwitcher guarantees a cross-fade transition when isLoading changes
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 400),
+                                switchInCurve: Curves.easeIn,
+                                switchOutCurve: Curves.easeOut,
+                                child: city.isLoading
+                                    ? Container(
+                                  key: const ValueKey('loading_container'),
+                                  color: Colors.grey[100],
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                                    : Stack(
+                                  key: ValueKey('city_container_${city.name}'),
+                                  children: [
                                     Positioned.fill(child: _buildImageWidgetFromUrl(city.imageUrl)),
                                     Positioned(
                                       bottom: 0, left: 0, right: 0,
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                                        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent])),
-                                        child: Text(city.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.bottomCenter,
+                                            end: Alignment.topCenter,
+                                            colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
+                                          ),
+                                        ),
+                                        child: Text(
+                                          city.name,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     ),
                                     Positioned.fill(
@@ -425,7 +458,7 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     ),
                                   ],
-                                ],
+                                ),
                               ),
                             ),
                           ),
@@ -495,14 +528,19 @@ class _HomePageState extends State<HomePage> {
                 child: Text("Still to be visited...", style: Theme.of(context).textTheme.titleMedium),
               ),
 
-              // Section 3: To Be Visited
+              // Section 3: To Be Visited (Anti-glitch optimized)
               SizedBox(
                 height: 150,
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('journeys').where('state', isEqualTo: 'to_be_visited').snapshots(),
+                  stream: FirebaseFirestore.instance
+                      .collection('journeys')
+                      .where('state', isEqualTo: 'to_be_visited')
+                      .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) return const Center(child: Text('Error loading data'));
-                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
                     final docs = snapshot.data!.docs;
                     if (docs.isEmpty) return const Center(child: Text('No journeys to be visited'));
@@ -514,6 +552,10 @@ class _HomePageState extends State<HomePage> {
                       itemBuilder: (context, index) {
                         final journey = Journey.fromFirestore(docs[index]);
                         final String locationName = journey.destinations.isNotEmpty ? journey.destinations.first : journey.name;
+
+                        // Optimization: Check the cache synchronously first to prevent the FutureBuilder flash!
+                        final String lookupKey = locationName.trim().toLowerCase();
+                        final bool isCached = _placesService.isPhotoCached(lookupKey);
 
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10.0),
@@ -530,9 +572,15 @@ class _HomePageState extends State<HomePage> {
                                   child: Stack(
                                     children: [
                                       Positioned.fill(
-                                        child: FutureBuilder<String?>(
+                                        child: isCached
+                                            ? _buildImageWidgetFromUrl(_placesService.getCachedPhotoUrl(lookupKey) ?? '')
+                                            : FutureBuilder<String?>(
                                           future: _placesService.getPlacePhotoUrl(locationName),
                                           builder: (context, urlSnapshot) {
+                                            // Smooth transition if it's fetching for the first time
+                                            if (urlSnapshot.connectionState == ConnectionState.waiting) {
+                                              return Container(color: Colors.grey[200]);
+                                            }
                                             return _buildImageWidgetFromUrl(urlSnapshot.data ?? '');
                                           },
                                         ),

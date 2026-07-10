@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../Auth/presentation_page.dart';
 import '../../Appearance/theme_controller.dart';
 import 'privacy_page.dart';
 
@@ -32,8 +31,9 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await user.updateDisplayName(_nameController.text.trim());
       await user.reload();
-      setState(() {}); // Refresh UI
+
       if (mounted) {
+        setState(() {}); // Refresh UI with new data
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Username updated!')),
@@ -81,7 +81,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 50,
+      imageQuality: 50, // Excellent choice to save bandwidth/storage
     );
 
     if (image == null) return;
@@ -105,20 +105,19 @@ class _ProfilePageState extends State<ProfilePage> {
       await user.updatePhotoURL(downloadUrl);
       await user.reload();
 
-      setState(() {
-        _isUploading = false;
-      });
-
       if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile picture updated!')),
         );
       }
     } catch (e) {
-      setState(() {
-        _isUploading = false;
-      });
       if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error uploading image: $e')),
         );
@@ -128,8 +127,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Re-fetch current user instance to guarantee fresh data after reload()
     final user = FirebaseAuth.instance.currentUser;
-    final username = user?.displayName ?? 'Utente';
+    final username = user?.displayName ?? 'User';
     final photoUrl = user?.photoURL;
 
     return Scaffold(
@@ -154,10 +154,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           : null,
                       child: photoUrl == null
                           ? const Icon(
-                              Icons.person,
-                              size: 80,
-                              color: Colors.white,
-                            )
+                        Icons.person,
+                        size: 80,
+                        color: Colors.white,
+                      )
                           : null,
                     ),
                     if (_isUploading)
@@ -208,9 +208,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
               const SizedBox(height: 40),
-              ListTile(
-                leading: const Icon(Icons.notifications),
-                title: const Text("Notifications"),
+              const ListTile(
+                leading: Icon(Icons.notifications),
+                title: Text("Notifications"),
               ),
               const Divider(),
               ListTile(
@@ -257,16 +257,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   ) ?? false;
 
                   if (confirm) {
+                    // AuthGate handles the UI redirection instantly upon sign out
                     await FirebaseAuth.instance.signOut();
-                    if (!context.mounted) return;
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (context) => PresentationPage()),
-                      (route) => false,
-                    );
                   }
                 },
               ),
-              const SizedBox(height: 20), //extra space for scrolling
+              const SizedBox(height: 20),
             ],
           ),
         ),

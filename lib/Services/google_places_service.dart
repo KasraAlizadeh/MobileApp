@@ -225,4 +225,14 @@ class GooglePlacesService {
   void clearCache() {
     _photoUrlCache.clear();
   }
+
+  /// Checks if the photo URL for a specific city is already in memory
+  bool isPhotoCached(String lowercaseCityName) {
+    return _photoUrlCache.containsKey(lowercaseCityName);
+  }
+
+  /// Synchronously gets the cached photo URL
+  String? getCachedPhotoUrl(String lowercaseCityName) {
+    return _photoUrlCache[lowercaseCityName];
+  }
 }

@@ -10,14 +10,14 @@ import 'journey_details.dart';
 
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
+
   @override
   State<WalletPage> createState() => _WalletPageState();
 }
 
 class _WalletPageState extends State<WalletPage> {
-  // state viariables
   List<Journey> _trips = [];
-  bool _isLoading = true; // loading spinner while fetching data initially
+  bool _isLoading = true;
   bool _isAuthorized = false;
   final LocalAuthentication _auth = LocalAuthentication();
 
@@ -36,33 +36,40 @@ class _WalletPageState extends State<WalletPage> {
         bool authenticated = await _auth.authenticate(
           localizedReason: 'Please authenticate to view your wallet',
         );
+
+        if (!mounted) return;
+
         if (authenticated) {
           setState(() => _isAuthorized = true);
           _fetchJourneysFromFirestore();
-        } else {
-          // Stay in unauthorized state
         }
       } catch (e) {
         debugPrint("Auth error: $e");
-        // In case of error, you might want to allow or block access
-        // For now, let's allow access if biometric check fails badly
-        _fetchJourneysFromFirestore();
+        // Safe fallback: allow access if biometric check fails completely
+        if (mounted) {
+          setState(() => _isAuthorized = true);
+          _fetchJourneysFromFirestore();
+        }
       }
     } else {
-      setState(() => _isAuthorized = true);
-      _fetchJourneysFromFirestore();
+      if (mounted) {
+        setState(() => _isAuthorized = true);
+        _fetchJourneysFromFirestore();
+      }
     }
   }
 
-  // one time fetch logic
   Future<void> _fetchJourneysFromFirestore() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+
     try {
       QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('journeys').get();
 
-      // convert Firestore documents into Journey objects
+      if (!mounted) return; // CRITICAL: Protects against memory crashes if user left the page
+
       List<Journey> loadedTrips = snapshot.docs.map((doc) {
-        return Journey.fromFirestore(doc); // Ensure your journey.dart has this factory!
+        return Journey.fromFirestore(doc);
       }).toList();
 
       setState(() {
@@ -70,8 +77,10 @@ class _WalletPageState extends State<WalletPage> {
         _isLoading = false;
       });
     } catch (e) {
-      print("Error fetching trips: $e");
-      setState(() => _isLoading = false);
+      debugPrint("Error fetching trips: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -97,19 +106,17 @@ class _WalletPageState extends State<WalletPage> {
         ),
       );
     }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          'My Journeys ✈️',
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: const Text('My Journeys ✈️', overflow: TextOverflow.ellipsis),
       ),
       body: Column(
         children: [
           const SizedBox(height: 20),
 
-          // add button
+          // Add button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: ElevatedButton(
@@ -119,14 +126,12 @@ class _WalletPageState extends State<WalletPage> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () async {
-                // Navigate and wait to see if the user saved a new journey
                 final bool? didSaveNewTrip = await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const JourneyDetailsPage()),
                 );
 
-                // if the details page returns 'true', re-fetch the data!
-                if (didSaveNewTrip == true) {
+                if (didSaveNewTrip == true && mounted) {
                   _fetchJourneysFromFirestore();
                 }
               },
@@ -134,6 +139,8 @@ class _WalletPageState extends State<WalletPage> {
             ),
           ),
           const SizedBox(height: 10),
+
+          // Debug trigger notification button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: ElevatedButton.icon(
@@ -145,21 +152,14 @@ class _WalletPageState extends State<WalletPage> {
               icon: const Icon(Icons.flash_on, color: Colors.white),
               label: const Text('⚡ FORCE NOTIFICATION NOW', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               onPressed: () async {
-                print("🚀 Forcing local notification trigger...");
-
-                // If we have journeys loaded, pass the actual ID of the first item
-                // to test real database modifications; otherwise, use a fallback string.
                 String testJourneyId = _trips.isNotEmpty ? _trips.first.id : "test_journey_id_123";
                 String testJourneyName = _trips.isNotEmpty ? _trips.first.name : "Test Trip to Rome";
 
-                // This triggers your service layout instantly
-                await NotificationService.showTripNotification(
-                    testJourneyId,
-                    testJourneyName
-                );
+                await NotificationService.showTripNotification(testJourneyId, testJourneyName);
               },
             ),
           ),
+
           const Padding(
             padding: EdgeInsets.all(20.0),
             child: Align(
@@ -168,7 +168,6 @@ class _WalletPageState extends State<WalletPage> {
             ),
           ),
 
-          // handling list or empty messages
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A)))
@@ -186,7 +185,7 @@ class _WalletPageState extends State<WalletPage> {
       child: Padding(
         padding: const EdgeInsets.all(40.0),
         child: Text(
-          "Are you boring?, letzzz go somewhere! 🌍",
+          "Are you bored? Let's go somewhere! 🌍",
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey[600], fontSize: 16, fontStyle: FontStyle.italic),
         ),
@@ -197,61 +196,66 @@ class _WalletPageState extends State<WalletPage> {
   Widget _buildTripList() {
     return ListView.builder(
       itemCount: _trips.length,
-      padding: const EdgeInsets.only(bottom: 20), // Spazio extra in fondo
+      padding: const EdgeInsets.only(bottom: 20),
       itemBuilder: (context, index) {
         bool isDark = index % 2 != 0;
         final journey = _trips[index];
 
-        // Usiamo una combinazione di ID e Index per garantire l'unicità assoluta della chiave
-        return Slidable(
-          key: ValueKey('${journey.id}_$index'),
-          endActionPane: ActionPane(
-            extentRatio: 0.4,
-            motion: const ScrollMotion(),
-            children: [
-              SlidableAction(
-                onPressed: (context) => _showConfirmDialog(context, "Edit", index),
-                backgroundColor: const Color(0xFF3D5A5A),
-                foregroundColor: Colors.white,
-                icon: Icons.edit,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              SlidableAction(
-                onPressed: (context) => _showConfirmDialog(context, "Delete", index),
-                backgroundColor: Colors.red.shade900,
-                foregroundColor: Colors.white,
-                icon: Icons.delete,
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ],
-          ),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF3D5A5A) : const Color(0xFFD1D9D1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              title: Text(
-                journey.name,
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.w500,
+        // FIXED: Wrap inside a unique ObjectKey to ensure Flutter treats each row
+        // as a completely distinct identity, avoiding GlobalKey collisions in Slidable.
+        return KeyedSubtree(
+          key: ObjectKey(journey),
+          child: Slidable(
+            // Keep a unique composite string for the slidable backend dismissible engine
+            key: ValueKey('slidable_${journey.id}_$index'),
+            endActionPane: ActionPane(
+              extentRatio: 0.4,
+              motion: const ScrollMotion(),
+              children: [
+                SlidableAction(
+                  onPressed: (context) => _showConfirmDialog(context, "Edit", index),
+                  backgroundColor: const Color(0xFF3D5A5A),
+                  foregroundColor: Colors.white,
+                  icon: Icons.edit,
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                SlidableAction(
+                  onPressed: (context) => _showConfirmDialog(context, "Delete", index),
+                  backgroundColor: Colors.red.shade900,
+                  foregroundColor: Colors.white,
+                  icon: Icons.delete,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ],
+            ),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF3D5A5A) : const Color(0xFFD1D9D1),
+                borderRadius: BorderRadius.circular(8),
               ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => JourneyDetailsPage(
-                      existingJourney: journey,
-                      isReadOnly: true,
-                    ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                title: Text(
+                  journey.name,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.w500,
                   ),
-                );
-              },
-              onLongPress: () => _showTripOptions(index),
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => JourneyDetailsPage(
+                        existingJourney: journey,
+                        isReadOnly: true,
+                      ),
+                    ),
+                  );
+                },
+                onLongPress: () => _showTripOptions(index),
+              ),
             ),
           ),
         );
@@ -272,7 +276,7 @@ class _WalletPageState extends State<WalletPage> {
               const SizedBox(height: 10),
               ListTile(
                 leading: const Icon(Icons.edit, color: Color(0xFF3D5A5A)),
-                title: Text("Edit", style: Theme.of(context).dialogTheme.contentTextStyle),
+                title: const Text("Edit"), // Safe default style assignment
                 onTap: () {
                   Navigator.pop(dialogContext);
                   _handleEdit(index);
@@ -302,7 +306,7 @@ class _WalletPageState extends State<WalletPage> {
   void _showConfirmDialog(BuildContext context, String action, int index) {
     showDialog(
       context: context,
-      builder: (BuildContext dialogContext) { // Renamed context to dialogContext for safety
+      builder: (BuildContext dialogContext) {
         bool isDelete = action == "Delete";
 
         return AlertDialog(
@@ -335,7 +339,7 @@ class _WalletPageState extends State<WalletPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onPressed: () {
-                      Navigator.pop(dialogContext); // Close the dialog
+                      Navigator.pop(dialogContext);
                       if (isDelete) {
                         _handleDelete(index);
                       } else {
@@ -356,24 +360,22 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 
-  // background delete logic
   Future<void> _handleDelete(int index) async {
     Journey tripToDelete = _trips[index];
 
-    // instantly remove from UI so it feels lightning fast for the user
     setState(() {
       _trips.removeAt(index);
     });
 
     try {
-      // background Task: Delete all connected PDFs in Firebase Storage
       if (tripToDelete.pdfUrls.isNotEmpty) {
         for (String url in tripToDelete.pdfUrls) {
-          await FirebaseStorage.instance.refFromURL(url).delete();
+          if (url.isNotEmpty) {
+            await FirebaseStorage.instance.refFromURL(url).delete();
+          }
         }
       }
 
-      // background Task: Delete the Firestore document
       await FirebaseFirestore.instance.collection('journeys').doc(tripToDelete.id).delete();
 
       if (mounted) {
@@ -382,7 +384,6 @@ class _WalletPageState extends State<WalletPage> {
         );
       }
     } catch (e) {
-      // if something fails, put it back in the list!
       if (mounted) {
         setState(() {
           _trips.insert(index, tripToDelete);
@@ -394,7 +395,6 @@ class _WalletPageState extends State<WalletPage> {
     }
   }
 
-  //edit logic
   Future<void> _handleEdit(int index) async {
     final bool? didUpdate = await Navigator.push(
       context,
@@ -403,10 +403,8 @@ class _WalletPageState extends State<WalletPage> {
       ),
     );
 
-    // if the edit page successfully saved, re-fetch to get the fresh data
-    if (didUpdate == true) {
+    if (didUpdate == true && mounted) {
       _fetchJourneysFromFirestore();
     }
   }
-
 }

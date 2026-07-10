@@ -57,7 +57,7 @@ class _PrivacyPageState extends State<PrivacyPage> {
   Future<void> _toggleBiometrics(bool value) async {
     if (value) {
       try {
-        // Soluzione ultra-compatibile: eliminiamo gli import extra e usiamo la sintassi nativa lineare
+        // Linear and ultra-compatible syntax without extra type options or imports
         bool authenticated = await _auth.authenticate(
           localizedReason: 'Confirm your identity to enable biometric access',
         );
@@ -107,6 +107,7 @@ class _PrivacyPageState extends State<PrivacyPage> {
         password: _oldPasswordController.text,
       );
 
+      // Re-authenticate user before updating sensitive fields
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(_newPasswordController.text);
 
@@ -118,11 +119,14 @@ class _PrivacyPageState extends State<PrivacyPage> {
       }
     } on FirebaseAuthException catch (e) {
       String message = 'An error occurred';
-      if (e.code == 'wrong-password') {
+
+      // FIXED: Added 'invalid-credential' check alongside 'wrong-password'
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         message = 'The old password is incorrect.';
       } else if (e.code == 'weak-password') {
         message = 'The new password is too weak.';
       }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message), backgroundColor: Colors.red),
@@ -188,21 +192,23 @@ class _PrivacyPageState extends State<PrivacyPage> {
                   TextFormField(
                     controller: _oldPasswordController,
                     obscureText: _obscureOld,
+                    autofillHints: const [AutofillHints.password], // UX Improvement
                     decoration: InputDecoration(
-                      labelText: "Old Password",
+                      labelText: "Current Password",
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(_obscureOld ? Icons.visibility : Icons.visibility_off),
                         onPressed: () => setState(() => _obscureOld = !_obscureOld),
                       ),
                     ),
-                    validator: (value) => value!.isEmpty ? "Enter your current password" : null,
+                    validator: (value) => (value == null || value.isEmpty) ? "Enter your current password" : null,
                   ),
                   const SizedBox(height: 16),
 
                   TextFormField(
                     controller: _newPasswordController,
                     obscureText: _obscureNew,
+                    autofillHints: const [AutofillHints.newPassword], // UX Improvement
                     decoration: InputDecoration(
                       labelText: "New Password",
                       prefixIcon: const Icon(Icons.lock_reset),
@@ -222,6 +228,7 @@ class _PrivacyPageState extends State<PrivacyPage> {
                   TextFormField(
                     controller: _confirmPasswordController,
                     obscureText: _obscureConfirm,
+                    autofillHints: const [AutofillHints.newPassword], // UX Improvement
                     decoration: InputDecoration(
                       labelText: "Confirm New Password",
                       prefixIcon: const Icon(Icons.check_circle_outline),
@@ -243,12 +250,14 @@ class _PrivacyPageState extends State<PrivacyPage> {
 
             _isUploading
                 ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-              onPressed: _changePassword,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                : SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _changePassword,
+                style: Theme.of(context).elevatedButtonTheme.style,
+                child: const Text("Update Password", style: TextStyle(color: Colors.white)),
               ),
-              child: const Text("Update Password"),
             ),
           ],
         ),
