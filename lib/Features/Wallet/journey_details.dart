@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../Services/notification_service.dart';
 import 'journey.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -294,7 +295,16 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         'fcmToken': fcmToken,
       };
       await docRef.set(journeyData, SetOptions(merge: true));
-
+      if (widget.existingJourney != null) {
+        // If editing, wipe previous calendars clean first to avoid duplicate ghosts
+        await NotificationService.cancelTripAutomations(targetJourneyId);
+      }
+      await NotificationService.scheduleTripAutomations(
+        targetJourneyId,
+        newFolder, // Journey Name
+        _startController.text,
+        _endController.text,
+      );
       print("✅ Successfully saved and synced files to updated folder paths!");
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error saving journey: $e")));

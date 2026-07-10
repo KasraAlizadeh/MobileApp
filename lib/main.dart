@@ -16,6 +16,61 @@ import 'package:awesome_notifications/awesome_notifications.dart';
 import 'Services/notification_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'Features/splash_screen.dart';
+
+
+@pragma("vm:entry-point")
+Future<void> onActionReceivedMethod(ReceivedAction receivedAction) async {
+  // This method runs in the background
+  String? journeyId = receivedAction.payload?['journeyId'];
+  String? actionFlag = receivedAction.payload?['action'];
+  if (journeyId == null) return;
+
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    // If it was already initialized in this isolate somehow, catch the error gracefully
+    print("Firebase initialization warning in background: $e");
+  }
+
+  if (receivedAction.buttonKeyPressed == 'YES_ACTION') {
+    print("Background update: User is going to $journeyId");
+    // We import cloud_firestore at top of main.dart to make this work
+    await FirebaseFirestore.instance
+        .collection('journeys')
+        .doc(journeyId)
+        .update({'state': 'visited'});
+    await AwesomeNotifications().cancel(journeyId.hashCode + 2);
+    print("User reacted. Second reminder canceled successfully.");
+  }
+  else if (receivedAction.buttonKeyPressed == 'CANCEL_ACTION') {
+    print("Background update: User cancelled trip $journeyId");
+    await FirebaseFirestore.instance
+        .collection('journeys')
+        .doc(journeyId)
+        .update({'state': 'canceled'});
+    for (int i = 1; i <= 6; i++) {
+      await AwesomeNotifications().cancel(journeyId.hashCode + i);
+    }
+  }
+  else if (actionFlag == 'edit_photos') {
+    print("User clicked photo reminder! Redirecting to edit screen for $journeyId");
+    // Handled smoothly when app transitions to foreground state
+  }
+
+}
+
+// Dummy background handlers to satisfy requirements
+@pragma("vm:entry-point")
+Future<void> onNotificationCreatedMethod(ReceivedNotification receivedNotification) async {}
+
+@pragma("vm:entry-point")
+Future<void> onNotificationDisplayedMethod(ReceivedNotification receivedNotification) async {}
+
+@pragma("vm:entry-point")
+Future<void> onDismissActionReceivedMethod(ReceivedAction receivedAction) async {}
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -25,9 +80,9 @@ void main() async {
 
   AwesomeNotifications().setListeners(
     onActionReceivedMethod: onActionReceivedMethod, // Points directly to top-level function
-    onNotificationCreatedMethod: (ReceivedNotification receivedNotification) async {},
-    onNotificationDisplayedMethod: (ReceivedNotification receivedNotification) async {},
-    onDismissActionReceivedMethod: (ReceivedAction receivedAction) async {},
+    onNotificationCreatedMethod: onNotificationCreatedMethod,
+    onNotificationDisplayedMethod: onNotificationDisplayedMethod,
+    onDismissActionReceivedMethod: onDismissActionReceivedMethod,
   );
   await dotenv.load(fileName: ".env");
   runApp(const MyApp());
@@ -117,28 +172,64 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
-    // This will trigger the permission checks as soon as this page opens
     _checkNotificationPermissions();
     AwesomeNotifications().setListeners(
       onActionReceivedMethod: (ReceivedAction receivedAction) async {
-        // Check if they clicked the Reschedule button
-        if (receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION') {
-          String? journeyId = receivedAction.payload?['journeyId'];
-          if (journeyId != null) {
-            _navigateToEditJourney(journeyId);
-          }
+        String? journeyId = receivedAction.payload?['journeyId'];
+        String? actionFlag = receivedAction.payload?['action'];
+
+        if (journeyId != null && actionFlag == 'edit_photos') {
+          // Triggers your existing built-in navigation logic perfectly!
+          _navigateToEditJourney(journeyId);
+        }
+        else if (journeyId != null && receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION') {
+          print("User clicked Reschedule button! Navigating to edit sheet...");
+          _navigateToEditJourney(journeyId);
         }
       },
     );
+    /*AwesomeNotifications().setListeners(
+      onActionReceivedMethod: (ReceivedAction receivedAction) async {
+        String? journeyId = receivedAction.payload?['journeyId'];
+        if (journeyId == null) return;
+        if (receivedAction.buttonKeyPressed == 'YES_ACTION') {
+          print("User confirmed going on journey: $journeyId");
+          await FirebaseFirestore.instance
+              .collection('journeys')
+              .doc(journeyId)
+              .update({'state': 'visited'}); // Or 'ongoing', depending on your naming preference!
+
+          // Force a notification block update alert on screen if app is running
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Awesome! Have a wonderful trip! 🌍")),
+            );
+          }
+        }
+        else if (receivedAction.buttonKeyPressed == 'DELETE_ACTION') {
+          print("User cancelled journey: $journeyId");
+          await FirebaseFirestore.instance
+              .collection('journeys')
+              .doc(journeyId)
+              .update({'state': 'cancelled'});
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Journey marked as cancelled.")),
+            );
+          }
+        }
+        else if (receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION') {
+          _navigateToEditJourney(journeyId);
+        }
+      },
+    );*/
   }
   void _navigateToEditJourney(String journeyId) async {
-    // 1. Fetch the full journey object from Firestore using the ID
+
     var doc = await FirebaseFirestore.instance.collection('journeys').doc(journeyId).get();
     if (doc.exists) {
-      // 2. Convert it to your Journey model object
-      Journey existingJourney = Journey.fromFirestore(doc); // Or however your model maps it
-
-      // 3. Jump to edit page!
+      Journey existingJourney = Journey.fromFirestore(doc); // Or however the model maps it
       if (mounted) {
         Navigator.push(
           context,
@@ -161,7 +252,6 @@ class _MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      //if you press "backwards"
       onPopInvokedWithResult: (didPop, result) {
         if (_indexesStack.isNotEmpty) {
           setState(() {
