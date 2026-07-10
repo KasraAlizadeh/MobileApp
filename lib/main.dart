@@ -66,7 +66,7 @@ void main() async {
   await NotificationService.initialize();
 
   AwesomeNotifications().setListeners(
-    onActionReceivedMethod: onActionReceivedMethod,
+    onActionReceivedMethod: onBackgroundActionReceivedMethod,
     onNotificationCreatedMethod: onNotificationCreatedMethod,
     onNotificationDisplayedMethod: onNotificationDisplayedMethod,
     onDismissActionReceivedMethod: onDismissActionReceivedMethod,
@@ -149,7 +149,7 @@ class _MainPageState extends State<MainPage> {
         if (journeyId != null && (actionFlag == 'edit_photos' || receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION')) {
           _navigateToEditJourney(journeyId);
         } else {
-          await onActionReceivedMethod(receivedAction);
+          await onBackgroundActionReceivedMethod(receivedAction);
         }
       },
       onNotificationCreatedMethod: onNotificationCreatedMethod,
