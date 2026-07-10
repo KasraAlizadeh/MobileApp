@@ -5,7 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'Wallet/journey.dart';
+import '../Wallet/journey.dart';
 
 String apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
 

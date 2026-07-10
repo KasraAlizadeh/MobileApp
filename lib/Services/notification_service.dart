@@ -6,28 +6,30 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
 import '../firebase_options.dart';
 
-// BACKGROUND ACTION LISTENER
+/// Handler of background actions
 @pragma("vm:entry-point")
-Future<void> onActionReceivedMethod(ReceivedAction receivedAction) async {
-//this is crucial for the background binary messenger channel
+Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Initialize Firebase (Required if the app was completely closed)
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    print("Firebase initialization warning in background isolate: $e");
+  }
 
   String? journeyId = receivedAction.payload?['journeyId'];
   if (journeyId == null) return;
 
   if (receivedAction.buttonKeyPressed == 'YES_ACTION') {
-    // UPDATE STATUS TO VISITED
-    try{
-      await FirebaseFirestore.instance.collection('journeys').doc(journeyId).update({'state': 'visited'});
-      print("Trip updated to visited!");
-    }
-    catch(err){
-      print("error at confirming trip notiication: $err");
-      // THE LOG CATCHER: Force the background worker to write its failure to the cloud
+    try {
+      await FirebaseFirestore.instance
+          .collection('journeys')
+          .doc(journeyId)
+          .update({'state': 'visited'});
+      await AwesomeNotifications().cancel(journeyId.hashCode + 2);
+    } catch (err) {
+      print("Error confirming trip in background: $err");
       await FirebaseFirestore.instance.collection('logs').add({
         'timestamp': FieldValue.serverTimestamp(),
         'journeyId': journeyId,
@@ -35,38 +37,37 @@ Future<void> onActionReceivedMethod(ReceivedAction receivedAction) async {
         'location': 'YES_ACTION_BACKGROUND'
       });
     }
+  }
+  else if (receivedAction.buttonKeyPressed == 'CANCEL_ACTION') {
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance.collection('journeys').doc(journeyId).get();
 
-  } else if (receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION') {
-    // The app will open. We will handle the routing to the Edit Page in main.dart
-    print("User wants to reschedule. Opening app...");
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        List<dynamic> pdfUrls = data['pdfUrls'] ?? [];
 
-  } else if (receivedAction.buttonKeyPressed == 'CANCEL_ACTION') {
-    // DELETE THE JOURNEY AND PDFs
-    DocumentSnapshot doc = await FirebaseFirestore.instance.collection('journeys').doc(journeyId).get();
-
-    if (doc.exists) {
-      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      List<dynamic> pdfUrls = data['pdfUrls'] ?? [];
-
-      for (String url in pdfUrls) {
-        if (url.isNotEmpty) {
-          await FirebaseStorage.instance.refFromURL(url).delete();
+        for (String url in pdfUrls) {
+          if (url.isNotEmpty) {
+            try {
+              await FirebaseStorage.instance.refFromURL(url).delete();
+            } catch (storageErr) {
+              print("Warning: Failed to delete storage file, might not exist: $storageErr");
+            }
+          }
         }
+        await FirebaseFirestore.instance.collection('journeys').doc(journeyId).delete();
       }
-      await FirebaseFirestore.instance.collection('journeys').doc(journeyId).delete();
-      print("Trip canceled and deleted!");
+    } catch (err) {
+      print("Error canceling trip in background: $err");
     }
   }
 }
 
-
-// NOTIFICATION SERVICE CLASS
 class NotificationService {
-
-  // Call this once in main.dart when the app starts
+  //Main notification channel initialization
   static Future<void> initialize() async {
     await AwesomeNotifications().initialize(
-      null, // null means it will use the default app icon
+      null, // Use the default app icon
       [
         NotificationChannel(
           channelGroupKey: 'trip_reminders_group',
@@ -80,6 +81,8 @@ class NotificationService {
       ],
     );
   }
+
+  /// Automatic planning of temporal sequence of notifications
   static Future<void> scheduleTripAutomations(
       String journeyId,
       String journeyName,
@@ -90,22 +93,19 @@ class NotificationService {
       DateTime startDate = DateFormat('yyyy-MM-dd').parse(startDateStr);
       DateTime endDate = DateFormat('yyyy-MM-dd').parse(endDateStr);
 
-      // Define clear trigger times
-      // Temporary test offsets inside scheduleTripAutomations:
-      /*DateTime notification1Time = DateTime.now().add(const Duration(minutes: 1));
-      DateTime notification2Time = DateTime.now().add(const Duration(minutes: 3));
-      DateTime notification3Time = DateTime.now().add(const Duration(minutes: 5));*/
+      // Temporal triggers based on the lifecycle of the trip
+      DateTime notification1Time = startDate.subtract(const Duration(days: 1)).copyWith(hour: 12, minute: 0);
+      DateTime notification2Time = startDate.copyWith(hour: 7, minute: 0);
+      DateTime notification3Time = endDate.copyWith(hour: 18, minute: 0);
 
-      DateTime notification1Time = startDate.subtract(const Duration(days: 1)).copyWith(hour: 12, minute: 0); // 1 day before at Noon
-      DateTime notification2Time = startDate.copyWith(hour: 7, minute: 0);  // Trip Day Morning at 7:00 AM
-      DateTime notification3Time = endDate.copyWith(hour: 18, minute: 0);   // Finishing Day at 6:00 PM
+      DateTime photoReminder1 = endDate.add(const Duration(days: 1)).copyWith(hour: 11, minute: 0);
+      DateTime photoReminder2 = endDate.add(const Duration(days: 2)).copyWith(hour: 16, minute: 0);
+      DateTime photoReminder3 = endDate.add(const Duration(days: 7)).copyWith(hour: 10, minute: 0);
 
-      DateTime photoReminder1 = endDate.add(const Duration(days: 1)).copyWith(hour: 11, minute: 0); // 1 day after at 11:00 AM
-      DateTime photoReminder2 = endDate.add(const Duration(days: 2)).copyWith(hour: 16, minute: 0); // 2 days after at 4:00 PM
-      DateTime photoReminder3 = endDate.add(const Duration(days: 7)).copyWith(hour: 10, minute: 0); // 1 week after at 10:00 AM
+      final now = DateTime.now();
 
-      // Notification 1: Day before warning
-      if (notification1Time.isAfter(DateTime.now())) {
+      // 1. Reminder of the day before
+      if (notification1Time.isAfter(now)) {
         await _createScheduledNotification(
           id: journeyId.hashCode + 1,
           journeyId: journeyId,
@@ -115,19 +115,19 @@ class NotificationService {
         );
       }
 
-      // Notification 2: Trip day confirmation check
-      if (notification2Time.isAfter(DateTime.now())) {
+      // 2. Checking the state before leaving
+      if (notification2Time.isAfter(now)) {
         await _createScheduledNotification(
           id: journeyId.hashCode + 2,
           journeyId: journeyId,
           title: "✈️ Trip Day: $journeyName!",
-          body: "Are you still going on your trip today?",
+          body: "Still going on your trip today?",
           targetTime: notification2Time,
         );
       }
 
-      // Notification 3: Return wrap-up
-      if (notification3Time.isAfter(DateTime.now())) {
+      // 3. Welcome home
+      if (notification3Time.isAfter(now)) {
         await _createScheduledNotification(
           id: journeyId.hashCode + 3,
           journeyId: journeyId,
@@ -136,7 +136,9 @@ class NotificationService {
           targetTime: notification3Time,
         );
       }
-      if (photoReminder1.isAfter(DateTime.now())) {
+
+      // 4. First photo reminder, the day after
+      if (photoReminder1.isAfter(now)) {
         await _createPhotoReminderNotification(
           id: journeyId.hashCode + 4,
           journeyId: journeyId,
@@ -144,33 +146,34 @@ class NotificationService {
           body: "Tap here to add your favorite photos to your travel journal before you forget!",
           targetTime: photoReminder1,
         );
-        //  Photo Reminder: 2 Days After
-        if (photoReminder2.isAfter(DateTime.now())) {
-          await _createPhotoReminderNotification(
-            id: journeyId.hashCode + 5,
-            journeyId: journeyId,
-            title: "✨ Capture the memories from $journeyName",
-            body: "Don't leave your travel memories behind! Upload your trip photos now.",
-            targetTime: photoReminder2,
-          );
-        }
+      }
 
-        //  Photo Reminder: 1 Week After
-        if (photoReminder3.isAfter(DateTime.now())) {
-          await _createPhotoReminderNotification(
-            id: journeyId.hashCode + 6,
-            journeyId: journeyId,
-            title: "⏳ One week since $journeyName!",
-            body: "Wrap up your travel wallet. Tap to add any remaining trip photos!",
-            targetTime: photoReminder3,
-          );
-        }
+      // 5. Second photo reminder, 2 days later
+      if (photoReminder2.isAfter(now)) {
+        await _createPhotoReminderNotification(
+          id: journeyId.hashCode + 5,
+          journeyId: journeyId,
+          title: "✨ Capture the memories from $journeyName",
+          body: "Don't leave your travel memories behind! Upload your trip photos now.",
+          targetTime: photoReminder2,
+        );
+      }
+
+      // 6. Third photo reminder, one week later
+      if (photoReminder3.isAfter(now)) {
+        await _createPhotoReminderNotification(
+          id: journeyId.hashCode + 6,
+          journeyId: journeyId,
+          title: "⏳ One week since $journeyName!",
+          body: "Wrap up your travel wallet. Tap to add any remaining trip photos!",
+          targetTime: photoReminder3,
+        );
       }
     } catch (e) {
       debugPrint("Error setting automated schedules: $e");
     }
   }
-  // Helper template method to schedule individual stages safely
+
   static Future<void> _createScheduledNotification({
     required int id,
     required String journeyId,
@@ -181,7 +184,7 @@ class NotificationService {
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
         id: id,
-        channelKey: 'trip_reminders', // Kept matching your original key
+        channelKey: 'trip_reminders',
         title: title,
         body: body,
         payload: {'journeyId': journeyId},
@@ -213,6 +216,7 @@ class NotificationService {
       schedule: NotificationCalendar.fromDate(date: targetTime),
     );
   }
+
   static Future<void> _createPhotoReminderNotification({
     required int id,
     required String journeyId,
@@ -226,17 +230,18 @@ class NotificationService {
         channelKey: 'trip_reminders',
         title: title,
         body: body,
-        payload: {'journeyId': journeyId, 'action': 'edit_photos'}, // Custom action flag
+        payload: {'journeyId': journeyId, 'action': 'edit_photos'},
         autoDismissible: true,
         notificationLayout: NotificationLayout.Default,
         actionType: ActionType.Default,
       ),
+      schedule: NotificationCalendar.fromDate(date: targetTime),
     );
   }
+
   static Future<void> cancelTripAutomations(String journeyId) async {
     for (int i = 1; i <= 6; i++) {
       await AwesomeNotifications().cancel(journeyId.hashCode + i);
     }
   }
-
 }

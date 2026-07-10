@@ -4,11 +4,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shimmer/shimmer.dart';
-import '../Services/google_places_service.dart';
-import '../Services/location_service.dart';
-import '../Services/osm_service.dart';
-import 'Wallet/journey.dart';
-import 'Wallet/journey_details.dart';
+import '../../Services/google_places_service.dart';
+import '../../Services/location_service.dart';
+import '../../Services/osm_service.dart';
+import '../Wallet/journey.dart';
+import '../Wallet/journey_details.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
