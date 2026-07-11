@@ -10,7 +10,7 @@ String apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
-
+  static final ValueNotifier<String?> triggeredCitySearchNotifier = ValueNotifier<String?>(null);
   @override
   State<SearchPage> createState() => _SearchPageState();
 }
@@ -21,10 +21,7 @@ class _SearchPageState extends State<SearchPage> {
   bool _isAiLoading = false;
   String _aiResponseTitle = "AI Travel Assistant 🧠";
   String _selectedCategory = 'All';
-
-
   double _currentSheetSize = 0.35;
-
   final List<Map<String, dynamic>> _categories = [
     {'id': 'All', 'label': 'Overview', 'icon': Icons.explore},
     {'id': 'Food', 'label': 'Local Food', 'icon': Icons.restaurant},
@@ -32,7 +29,6 @@ class _SearchPageState extends State<SearchPage> {
     {'id': 'Adventure', 'label': 'Adventure', 'icon': Icons.terrain},
     {'id': 'Stays', 'label': 'Top Stays', 'icon': Icons.hotel},
   ];
-
   List<Map<String, String>> _allRecommendations = [
     {
       'category': 'All',
@@ -41,7 +37,6 @@ class _SearchPageState extends State<SearchPage> {
       'body': 'Tap a pin or enter a city to unlock local dishes, top restaurants, landmarks, hidden adventures, and accommodation hubs!'
     }
   ];
-
   Color _getMarkerColor(String? state) {
     switch (state) {
       case 'visited': return Colors.green;
@@ -50,7 +45,6 @@ class _SearchPageState extends State<SearchPage> {
       default: return Colors.grey;
     }
   }
-
   Future<void> _askAiAgent(String city) async {
     if (city.trim().isEmpty) return;
 
@@ -124,7 +118,6 @@ class _SearchPageState extends State<SearchPage> {
       });
     }
   }
-
   Future<List<Marker>> _buildMarkersFromTripNames(List<QueryDocumentSnapshot> docs, BuildContext context) async {
     List<Marker> localMarkers = [];
     for (var doc in docs) {
@@ -162,7 +155,29 @@ class _SearchPageState extends State<SearchPage> {
     }
     return localMarkers;
   }
+  @override
+  void initState() {
+    super.initState();
 
+    // Listen for incoming city updates from the explore tiles click events!
+    SearchPage.triggeredCitySearchNotifier.addListener(_handleIncomingDeepLinkSearch);
+  }
+
+  @override
+  void dispose() {
+    SearchPage.triggeredCitySearchNotifier.removeListener(_handleIncomingDeepLinkSearch);
+    super.dispose();
+  }
+
+  void _handleIncomingDeepLinkSearch() async {
+    final cityName = SearchPage.triggeredCitySearchNotifier.value;
+    if (cityName == null || cityName.isEmpty) return;
+    SearchPage.triggeredCitySearchNotifier.value = null;
+    print("Executing Deep-Link AI Search parameters for city target: $cityName");
+    _aiSearchController.text = cityName;
+    await _askAiAgent(cityName);
+
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(

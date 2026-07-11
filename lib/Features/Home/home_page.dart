@@ -12,7 +12,11 @@ import '../Wallet/journey.dart';
 import '../Wallet/journey_details.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final Function(int targetIndex, String queryCity) onDeepLinkSearch;
+  const HomePage({
+    super.key,
+    required this.onDeepLinkSearch,
+  });
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -546,15 +550,39 @@ class _HomePageState extends State<HomePage> {
 
                     final docs = snapshot.data!.docs;
                     if (docs.isEmpty) return const Center(child: Text('No journeys to be visited'));
+                    List<Map<String, dynamic>> flattenedDestinations = [];
+                    for (var doc in docs) {
+                      final journey = Journey.fromFirestore(doc);
 
+                      if (journey.destinations.isEmpty) {
+                        // Fallback to journey name if the destinations list happens to be empty
+                        flattenedDestinations.add({
+                          'cityName': journey.name,
+                          'journey': journey,
+                        });
+                      } else {
+                        // Add a circle for every single destination item inside this trip!
+                        for (String destination in journey.destinations) {
+                          flattenedDestinations.add({
+                            'cityName': destination,
+                            'journey': journey,
+                          });
+                        }
+                      }
+                    }
                     return ListView.builder(
                       physics: const BouncingScrollPhysics(),
                       scrollDirection: Axis.horizontal,
-                      itemCount: docs.length,
+                      itemCount: flattenedDestinations.length,
                       itemBuilder: (context, index) {
-                        final journey = Journey.fromFirestore(docs[index]);
+                        final target = flattenedDestinations[index];
+                        final Journey journey = target['journey'];
+                        final String cityName = target['cityName'];
+
                         return _JourneyCircleItem(
+                          key: ValueKey('journey_circle_${journey.id}_$cityName\_$index'),
                           journey: journey,
+                          specificCityName: cityName, // 🌟 Pass the explicit city item down
                           placesService: _placesService,
                           onTap: () => _showJourneyDetails(context, journey),
                           imageBuilder: _buildImageWidgetFromUrl,
@@ -647,12 +675,33 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 20),
                 Center(
-                  child: ElevatedButton(
+                  /*child: ElevatedButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 20.0),
                       child: Text("Cool!"),
                     ),
+                  ),*/
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF3D5A5A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.explore_outlined, size: 18),
+                    label: const Text("Explore More!", style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      widget.onDeepLinkSearch(1, cityName);// Close the dialog box safely first
+                      final mainPageState = context.findAncestorStateOfType<State<StatefulWidget>>();
+                      if (mainPageState != null && mainPageState.mounted) {
+                        (mainPageState as dynamic).handleDeepLinkSearch(
+                            targetIndex: 1,
+                            queryCity: cityName
+                        );
+                      }
+                    },
                   ),
                 ),
               ],
@@ -710,12 +759,15 @@ class SuggestedCity {
 
 class _JourneyCircleItem extends StatefulWidget {
   final Journey journey;
+  final String specificCityName;
   final GooglePlacesService placesService;
   final VoidCallback onTap;
   final Widget Function(String) imageBuilder;
 
   const _JourneyCircleItem({
+    super.key,
     required this.journey,
+    required this.specificCityName,
     required this.placesService,
     required this.onTap,
     required this.imageBuilder,
@@ -735,9 +787,16 @@ class _JourneyCircleItemState extends State<_JourneyCircleItem> {
     _locationName = widget.journey.destinations.isNotEmpty
         ? widget.journey.destinations.first
         : widget.journey.name;
-    _imageFuture = widget.placesService.getPlacePhotoUrl(_locationName);
+    _imageFuture = widget.placesService.getPlacePhotoUrl(widget.specificCityName);
   }
-
+  @override
+  void didUpdateWidget(covariant _JourneyCircleItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Safety check if items change during list filtering animations
+    if (oldWidget.specificCityName != widget.specificCityName) {
+      _imageFuture = widget.placesService.getPlacePhotoUrl(widget.specificCityName);
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<String?>(
@@ -775,7 +834,7 @@ class _JourneyCircleItemState extends State<_JourneyCircleItem> {
               ),
               const SizedBox(height: 10),
               Text(
-                _locationName,
+                widget.specificCityName,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
               ),
             ],

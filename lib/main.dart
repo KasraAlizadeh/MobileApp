@@ -129,11 +129,15 @@ class _MainPageState extends State<MainPage> {
   int _selectedIndex = 0;
   final List<int> _indexesStack = [0];
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    SearchPage(),
-    WalletPage(),
-    ProfilePage(),
+  late final List<Widget> _pages =  [
+    HomePage(
+      onDeepLinkSearch: (targetIndex, queryCity) {
+        handleDeepLinkSearch(targetIndex: targetIndex, queryCity: queryCity);
+      },
+    ),
+    const SearchPage(),
+    const WalletPage(),
+    const ProfilePage(),
   ];
 
   @override
@@ -186,6 +190,20 @@ class _MainPageState extends State<MainPage> {
       _indexesStack.remove(index); //Removes old occurences
       _indexesStack.add(_selectedIndex); //Keeps in memory the current index before changing
       _selectedIndex = index;
+    });
+  }
+  // Inside your _MainPageState class:
+  void handleDeepLinkSearch({required int targetIndex, required String queryCity}) {
+    setState(() {
+      _selectedIndex = targetIndex; // Switch tab view layout target index to 1 (SearchPage)
+    });
+
+    // Give the UI a split second to finish the tab layout transition animation,
+    // then pass the city parameter straight down to the active SearchPage state instance!
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // We send a global notification event or read the key reference hook to trigger auto search execution
+      // Alternately, you can pass this via a global state manager or static router argument parameter!
+      SearchPage.triggeredCitySearchNotifier.value = queryCity;
     });
   }
 
