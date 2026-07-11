@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -53,20 +54,20 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
     _journeyStream = FirebaseFirestore.instance
         .collection('journeys')
+        .where('userId', isEqualTo: uid)
         .where('state', isEqualTo: 'to_be_visited')
         .snapshots();
-    _loadAllPageData(requestActivation: false); // Silenzioso all'avvio
+    _loadAllPageData(requestActivation: false);
   }
 
   Future<void> _loadAllPageData({bool requestActivation = true}) async {
     _randomCapitals = (List<String>.from(_italianCapitals)..shuffle()).take(5).toList();
-    
-    // Avviamo il pre-caricamento delle immagini in parallelo
+
     final preloadTask = _preloadExploreImages();
-    
-    // Controlliamo i permessi
+
     bool hasPermission = await _checkLocationPermission(requestActivation: requestActivation);
     if (!hasPermission) {
       if (mounted) {
@@ -78,35 +79,30 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // Aspettiamo che entrambi i task (posizione e immagini esplora) siano completati
     final results = await Future.wait([
       _getSuggestedCities(),
       preloadTask,
     ]);
 
-    final initialList = results[0] as List<SuggestedCity>;
+    if (!mounted) return;
 
-    if (mounted) {
-      setState(() {
-        _locationDenied = false;
-        _suggestedCities = initialList;
-        _isInitialLoading = false;
-      });
-    }
+    setState(() {
+      _locationDenied = false;
+      _suggestedCities = results[0] as List<SuggestedCity>;
+      _isInitialLoading = false;
+    });
   }
 
   Future<bool> _checkLocationPermission({bool requestActivation = true}) async {
     try {
-      // 1. Controlla se il servizio di localizzazione è attivo
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (requestActivation) {
           await Geolocator.openLocationSettings();
         }
-        return false; 
+        return false;
       }
 
-      // 2. Controlla i permessi dell'app
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         if (requestActivation) {
@@ -114,14 +110,14 @@ class _HomePageState extends State<HomePage> {
         }
         if (permission == LocationPermission.denied) return false;
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
         if (requestActivation) {
           await Geolocator.openAppSettings();
         }
         return false;
       }
-      
+
       return true;
     } catch (e) {
       return false;
@@ -129,6 +125,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshData() async {
+    if (!mounted) return;
     setState(() {
       _isInitialLoading = true;
       _isExploreLoading = true;
@@ -142,28 +139,29 @@ class _HomePageState extends State<HomePage> {
     final Map<String, String> tempGeoCache = {};
 
     await Future.wait(_randomCapitals.map((cityName) async {
-      // Fetch photo and location info in parallel
+      if (!mounted) return;
+
       final results = await Future.wait([
         _placesService.getPlacePhotoUrl(cityName),
         locationFromAddress(cityName).timeout(const Duration(seconds: 2), onTimeout: () => []),
       ]);
 
       tempCache[cityName] = (results[0] as String?) ?? '';
-      
+
       final locations = results[1] as List<Location>;
-      if (locations.isNotEmpty) {
+      if (locations.isNotEmpty && mounted) {
         try {
           final placemarks = await placemarkFromCoordinates(
             locations.first.latitude,
             locations.first.longitude,
           ).timeout(const Duration(seconds: 2), onTimeout: () => []);
-          
+
           if (placemarks.isNotEmpty) {
             final p = placemarks.first;
             final region = p.administrativeArea ?? '';
             final province = p.subAdministrativeArea ?? '';
-            tempGeoCache[cityName] = region.isNotEmpty && province.isNotEmpty 
-                ? "$province ($region)" 
+            tempGeoCache[cityName] = region.isNotEmpty && province.isNotEmpty
+                ? "$province ($region)"
                 : (region.isNotEmpty ? region : province);
           }
         } catch (_) {}
@@ -209,14 +207,12 @@ class _HomePageState extends State<HomePage> {
       print("Fast localization error: $e");
     }
 
-    final images = await Future.wait([
-      _placesService.getPlacePhotoUrl(currentCity),
-    ]);
+    final images = await _placesService.getPlacePhotoUrl(currentCity);
 
     return [
       SuggestedCity(
         name: currentCity,
-        imageUrl: images[0] ?? '',
+        imageUrl: images ?? '',
         subtitle: "Where am I?",
         region: currentRegion,
         province: currentProvince,
@@ -230,7 +226,6 @@ class _HomePageState extends State<HomePage> {
     ];
   }
 
-  // Task secondario che aggiorna localmente SOLO l'indice 1 del carosello dei suggeriti
   Future<void> _loadNearbyCityAsynchronously(double lat, double lng, String currentCity) async {
     List<String> nearbyRaw = [];
     String nearbyCity = "Milano";
@@ -239,7 +234,6 @@ class _HomePageState extends State<HomePage> {
 
     try {
       nearbyRaw = await _osmService.getNearbyCities(lat, lng, radiusInKm: 25.0);
-
       nearbyRaw.removeWhere((city) =>
       city.trim().toLowerCase() == currentCity.trim().toLowerCase());
 
@@ -250,9 +244,10 @@ class _HomePageState extends State<HomePage> {
         nearbyCity = "Milano";
       }
 
-      // Fetch geo info for the nearby city
+      if (!mounted) return;
+
       final locations = await locationFromAddress(nearbyCity).timeout(const Duration(seconds: 2), onTimeout: () => []);
-      if (locations.isNotEmpty) {
+      if (locations.isNotEmpty && mounted) {
         final placemarks = await placemarkFromCoordinates(
           locations.first.latitude,
           locations.first.longitude,
@@ -265,6 +260,8 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       print("Errore background OSM: $e");
     }
+
+    if (!mounted) return;
 
     final imageUrl = await _placesService.getPlacePhotoUrl(nearbyCity) ?? '';
 
@@ -286,54 +283,54 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Mentre carica la prima volta o se la posizione è negata, non mostriamo la struttura della Home
     if (_isInitialLoading || _locationDenied) {
       return Scaffold(
         appBar: AppBar(title: const Text('Home')),
-        body: _isInitialLoading 
-          ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.location_off_outlined,
-                      size: 80,
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      "Enable Location",
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "To give you the best experience, we need to know where you are.",
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        setState(() => _isInitialLoading = true);
-                        await _loadAllPageData(requestActivation: true);
-                      },
-                      icon: const Icon(Icons.my_location),
-                      label: const Text("Allow Access"),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                      ),
-                    ),
-                  ],
+        body: _isInitialLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.location_off_outlined,
+                  size: 80,
+                  color: Theme.of(context).colorScheme.primary..withValues(alpha: 0.5),
                 ),
-              ),
+                const SizedBox(height: 24),
+                Text(
+                  "Enable Location",
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "To give you the best experience, we need to know where you are.",
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    if (!mounted) return;
+                    setState(() => _isInitialLoading = true);
+                    await _loadAllPageData(requestActivation: true);
+                  },
+                  icon: const Icon(Icons.my_location),
+                  label: const Text("Allow Access"),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  ),
+                ),
+              ],
             ),
+          ),
+        ),
       );
     }
 
@@ -341,23 +338,6 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('Home', overflow: TextOverflow.ellipsis),
       ),
-      //To activate when you don't want to load the images
-      /*
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.home_outlined, size: 100, color: Colors.grey),
-            SizedBox(height: 20),
-            Text(
-              "Home Placeholder",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            Text("Content is currently hidden", style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      ),
-      */
       body: RefreshIndicator(
         onRefresh: _refreshData,
         child: SingleChildScrollView(
@@ -368,9 +348,7 @@ class _HomePageState extends State<HomePage> {
               // Section 1: Suggested Cities
               SizedBox(
                 height: 250,
-                child: _isInitialLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
+                child: ListView.builder(
                   physics: const BouncingScrollPhysics(),
                   scrollDirection: Axis.horizontal,
                   itemCount: _suggestedCities.length,
@@ -385,7 +363,7 @@ class _HomePageState extends State<HomePage> {
                             padding: const EdgeInsets.only(bottom: 4.0),
                             child: Text(
                               city.subtitle!,
-                              style: Theme.of(context).textTheme.titleMedium
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
                         Expanded(
@@ -465,26 +443,26 @@ class _HomePageState extends State<HomePage> {
                 height: 150,
                 child: _isExploreLoading
                     ? ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: 5,
-                        itemBuilder: (context, index) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                          child: Column(
-                            children: [
-                              Shimmer.fromColors(
-                                baseColor: Colors.grey[300]!,
-                                highlightColor: Colors.grey[100]!,
-                                child: Container(
-                                  width: 120, height: 120,
-                                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Container(width: 60, height: 12, color: Colors.grey[300]),
-                            ],
+                  scrollDirection: Axis.horizontal,
+                  itemCount: 5,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                    child: Column(
+                      children: [
+                        Shimmer.fromColors(
+                          baseColor: Colors.grey[300]!,
+                          highlightColor: Colors.grey[100]!,
+                          child: Container(
+                            width: 120, height: 120,
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                           ),
                         ),
-                      )
+                        const SizedBox(height: 10),
+                        Container(width: 60, height: 12, color: Colors.grey[300]),
+                      ],
+                    ),
+                  ),
+                )
                     : ListView.builder(
                   physics: const BouncingScrollPhysics(),
                   scrollDirection: Axis.horizontal,
@@ -547,7 +525,7 @@ class _HomePageState extends State<HomePage> {
                   stream: _journeyStream,
                   builder: (context, snapshot) {
                     if (snapshot.hasError) return const Center(child: Text('Error loading data'));
-                    
+
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return ListView.builder(
                         scrollDirection: Axis.horizontal,
@@ -576,7 +554,7 @@ class _HomePageState extends State<HomePage> {
                       itemBuilder: (context, index) {
                         final journey = Journey.fromFirestore(docs[index]);
                         return _JourneyCircleItem(
-                          journey: journey, 
+                          journey: journey,
                           placesService: _placesService,
                           onTap: () => _showJourneyDetails(context, journey),
                           imageBuilder: _buildImageWidgetFromUrl,
@@ -754,8 +732,8 @@ class _JourneyCircleItemState extends State<_JourneyCircleItem> {
   @override
   void initState() {
     super.initState();
-    _locationName = widget.journey.destinations.isNotEmpty 
-        ? widget.journey.destinations.first 
+    _locationName = widget.journey.destinations.isNotEmpty
+        ? widget.journey.destinations.first
         : widget.journey.name;
     _imageFuture = widget.placesService.getPlacePhotoUrl(_locationName);
   }

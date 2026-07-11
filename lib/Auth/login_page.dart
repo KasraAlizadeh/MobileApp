@@ -22,7 +22,7 @@ class _LoginPageState extends State<LoginPage> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      DialogService.showErrorDialog(context, "Inserisci email e password");
+      DialogService.showErrorDialog(context, "Please enter both email and password.");
       return;
     }
 
@@ -46,19 +46,22 @@ class _LoginPageState extends State<LoginPage> {
       );
 
     } on FirebaseAuthException catch (e) {
-      String message = "Error during access";
+      if (!mounted) return;
+
+      String message = "An error occurred during access.";
 
       if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        message = "Incorrect email or password";
+        message = "Incorrect email or password.";
       } else if (e.code == 'invalid-email') {
-        message = "Invalid email address";
+        message = "The email address is badly formatted.";
       } else if (e.code == 'user-disabled') {
-        message = "This account is disabled";
+        message = "This user account has been disabled.";
       }
 
       DialogService.showErrorDialog(context, message);
     } catch (e) {
-      DialogService.showErrorDialog(context, "Unexpected error");
+      if (!mounted) return;
+      DialogService.showErrorDialog(context, "An unexpected error occurred.");
     } finally {
       if (mounted) {
         setState(() {
@@ -81,57 +84,65 @@ class _LoginPageState extends State<LoginPage> {
       appBar: AppBar(title: const Text("Login")),
       body: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: "Email",
-                prefixIcon: Icon(Icons.email),
-              ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: "Password",
-                prefixIcon: Icon(Icons.lock),
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 20),
-            _isLoading
-                ? const CircularProgressIndicator()
-                : SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _login,
-                      style: Theme.of(context).elevatedButtonTheme.style,
-                      child: const Text("Log In", style: TextStyle(color: Colors.white)),
-                    ),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: "Email",
+                    prefixIcon: Icon(Icons.email),
                   ),
-            TextButton(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SignUpPage()),
-                );
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _passwordController,
+                  decoration: const InputDecoration(
+                    labelText: "Password",
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                  obscureText: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _login(),
+                ),
+                const SizedBox(height: 20),
+                _isLoading
+                    ? const CircularProgressIndicator()
+                    : SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _login,
+                    style: Theme.of(context).elevatedButtonTheme.style,
+                    child: const Text("Log In", style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SignUpPage()),
+                    );
 
-                if (!context.mounted) return;
+                    if (!context.mounted) return;
 
-                if (result != null) {
-                  _emailController.text = result["email"] ?? "";
-                  _passwordController.text = result["password"] ?? "";
+                    if (result != null) {
+                      _emailController.text = result["email"] ?? "";
+                      _passwordController.text = result["password"] ?? "";
 
-                  DialogService.showSuccessSnackBar(context, "Registration completed, now you can access");
-                }
-              },
-              child: const Text("No account yet? Sign up"),
+                      DialogService.showSuccessSnackBar(context, "Registration completed! You can now log in.");
+                    }
+                  },
+                  child: const Text("No account yet? Sign up"),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

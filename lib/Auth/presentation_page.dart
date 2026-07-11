@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:travel_app/Auth/login_page.dart';
-import 'package:travel_app/Auth/signup_page.dart';
-import 'package:awesome_notifications/awesome_notifications.dart';
+import 'login_page.dart';
+import 'signup_page.dart';
 
 class PresentationPage extends StatefulWidget {
   const PresentationPage({super.key});
@@ -12,23 +11,8 @@ class PresentationPage extends StatefulWidget {
 }
 
 class _PresentationPageState extends State<PresentationPage> {
-  @override
-  void initState() {
-    super.initState();
-    _checkPermissions();
-  }
 
-  void _checkPermissions() async {
-    // Check Notification Permissions
-    AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
-      if (!isAllowed) {
-        AwesomeNotifications().requestPermissionToSendNotifications();
-      }
-    });
-  }
-
-  // Change current page to login page
-  void _go_to_login(BuildContext context) {
+  void _goToLogin(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -37,7 +21,7 @@ class _PresentationPageState extends State<PresentationPage> {
     );
   }
 
-  void _go_to_signup(BuildContext context) {
+  void _goToSignup(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -53,34 +37,34 @@ class _PresentationPageState extends State<PresentationPage> {
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Color(0xFFcad2c5),
-              Color(0xFF2f3e46),
+              Color(0xFFCAD2C5),
+              Color(0xFF2F3E46),
             ],
             begin: Alignment.topCenter,
-            end: Alignment.bottomCenter
+            end: Alignment.bottomCenter,
           ),
         ),
         child: Padding(
           padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 20, //avoids status bar
-            bottom: MediaQuery.of(context).padding.bottom + 20, //avoids taskbar
+            top: MediaQuery.of(context).padding.top + 20,    // Evita la barra di stato nativa
+            bottom: MediaQuery.of(context).padding.bottom + 20, // Evita la barra di navigazione/taskbar nativa
             left: 20,
-            right: 20
+            right: 20,
           ),
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Spacer(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: const Text(
+                const Spacer(),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text(
                     'TravelMate',
                     style: TextStyle(
-                        fontFamily: 'lobster',
-                        fontSize: 40,
-                        color: Colors.white
+                      fontFamily: 'lobster',
+                      fontSize: 40,
+                      color: Colors.white,
                     ),
                   ),
                 ),
@@ -92,9 +76,9 @@ class _PresentationPageState extends State<PresentationPage> {
                     child: SvgPicture.asset('assets/icons/globe.svg'),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: const Text(
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text(
                     'Simplify every journey',
                     style: TextStyle(
                       fontFamily: 'roboto',
@@ -104,20 +88,18 @@ class _PresentationPageState extends State<PresentationPage> {
                     ),
                   ),
                 ),
-                Spacer(),
+                const Spacer(),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: () => _go_to_login(context),
+                      onPressed: () => _goToLogin(context),
                       style: Theme.of(context).elevatedButtonTheme.style,
                       child: const Text(
                         'Log in',
-                        style: TextStyle(
-                            color: Colors.white
-                        ),
+                        style: TextStyle(color: Colors.white),
                       ),
                     ),
                   ),
@@ -128,13 +110,11 @@ class _PresentationPageState extends State<PresentationPage> {
                     width: double.infinity,
                     height: 50,
                     child: OutlinedButton(
-                      onPressed: () => _go_to_signup(context),
+                      onPressed: () => _goToSignup(context),
                       style: Theme.of(context).outlinedButtonTheme.style,
                       child: const Text(
                         'Create an account',
-                        style: TextStyle(
-                            color: Colors.white
-                        ),
+                        style: TextStyle(color: Colors.white),
                       ),
                     ),
                   ),
