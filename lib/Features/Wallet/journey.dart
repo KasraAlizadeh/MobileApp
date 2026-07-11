@@ -14,13 +14,6 @@ class Journey {
   final String? notes;
   final List<String> pdfUrls;
   final List<String> imageUrls;
-  // Helper to safely get a URL at a specific position
-  String? getUrlAt(int index) {
-    if (index >= 0 && index < pdfUrls.length) {
-      return pdfUrls[index];
-    }
-    return null;
-  }
   final String? state;
 
   Journey({
@@ -37,14 +30,23 @@ class Journey {
     this.notes,
     this.pdfUrls = const [],
     this.imageUrls = const [],
-    this.state
+    this.state,
   });
 
+  // Helper per estrarre in sicurezza un URL dall'indice senza crash di Out of Bounds
+  String? getUrlAt(int index) {
+    if (index >= 0 && index < pdfUrls.length) {
+      return pdfUrls[index];
+    }
+    return null;
+  }
+
+  // Deserializzatore: da Documento NoSQL a Oggetto Dart fortemente tipizzato
   factory Journey.fromFirestore(DocumentSnapshot doc) {
-    Map data = doc.data() as Map<String, dynamic>;
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Journey(
       id: doc.id,
-        userId: data['userId'] ?? '',
+      userId: data['userId'] ?? '',
       name: data['name'] ?? 'Unnamed Journey',
       type: data['travelType'],
       startDate: data['startDate'],
@@ -55,9 +57,28 @@ class Journey {
       activities: List<Map<String, dynamic>>.from(data['activities'] ?? []),
       notes: data['notes'],
       pdfUrls: List<String>.from(data['pdfUrls'] ?? []),
-        imageUrls: List<String>.from(data['photoUrls'] ?? []),
-      state: data['state'] ?? 'to_be_visited'
-
+      imageUrls: List<String>.from(data['photoUrls'] ?? []),
+      state: data['state'] ?? 'to_be_visited',
     );
+  }
+
+  // Serializzatore: converte l'istanza in una mappa compatibile con Firestore (Tutto centralizzato!)
+  Map<String, dynamic> toMap(String? fcmToken) {
+    return {
+      'userId': userId,
+      'name': name,
+      'travelType': type,
+      'startDate': startDate,
+      'endDate': endDate,
+      'destinations': destinations,
+      'transportation': transportation,
+      'accommodation': accommodation,
+      'activities': activities,
+      'notes': notes,
+      'pdfUrls': pdfUrls,
+      'photoUrls': imageUrls,
+      'state': state ?? 'to_be_visited',
+      'fcmToken': fcmToken,
+    };
   }
 }

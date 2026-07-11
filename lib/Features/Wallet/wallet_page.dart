@@ -36,21 +36,27 @@ class _WalletPageState extends State<WalletPage> {
         bool authenticated = await _auth.authenticate(
           localizedReason: 'Please authenticate to view your wallet',
         );
+
+        if (!mounted) return;
+
         if (authenticated) {
           setState(() => _isAuthorized = true);
           _fetchJourneysFromFirestore();
         }
       } catch (e) {
         debugPrint("Auth error: $e");
-        _fetchJourneysFromFirestore();
+        if (mounted) _fetchJourneysFromFirestore();
       }
     } else {
-      setState(() => _isAuthorized = true);
-      _fetchJourneysFromFirestore();
+      if (mounted) {
+        setState(() => _isAuthorized = true);
+        _fetchJourneysFromFirestore();
+      }
     }
   }
 
   Future<void> _refreshData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _trips.clear();
@@ -66,7 +72,7 @@ class _WalletPageState extends State<WalletPage> {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         return;
       }
       QuerySnapshot snapshot = await FirebaseFirestore.instance
@@ -92,7 +98,6 @@ class _WalletPageState extends State<WalletPage> {
     }
   }
 
-  // Custom Background Colors based on Journey State
   Color _getTileColor(String? state) {
     switch (state) {
       case 'visited': return Colors.green.shade100;
@@ -103,7 +108,6 @@ class _WalletPageState extends State<WalletPage> {
     }
   }
 
-  // Clean Text Colors based on Journey State
   Color _getTextColor(String? state) {
     switch (state) {
       case 'visited': return Colors.green.shade900;
@@ -137,7 +141,6 @@ class _WalletPageState extends State<WalletPage> {
       );
     }
 
-    // Filter master list into individual segments dynamically
     final scheduledTrips = _trips.where((t) => t.state == 'to_be_visited').toList();
     final visitedTrips = _trips.where((t) => t.state == 'visited').toList();
     final canceledTrips = _trips.where((t) => t.state == 'canceled' || t.state == 'cancelled').toList();
@@ -145,7 +148,7 @@ class _WalletPageState extends State<WalletPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('My Journey️', overflow: TextOverflow.ellipsis),
+        title: const Text('My Journeys ✈️', overflow: TextOverflow.ellipsis),
       ),
       body: RefreshIndicator(
         onRefresh: _refreshData,
@@ -154,8 +157,6 @@ class _WalletPageState extends State<WalletPage> {
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             const SizedBox(height: 20),
-
-            // Add Button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: ElevatedButton(
@@ -197,10 +198,8 @@ class _WalletPageState extends State<WalletPage> {
               children: [
                 _buildSectionHeader("🗓️ Scheduled Trips", scheduledTrips.length),
                 _buildTripSubList(scheduledTrips),
-
                 _buildSectionHeader("✅ Visited Places", visitedTrips.length),
                 _buildTripSubList(visitedTrips),
-
                 _buildSectionHeader("❌ Canceled Journeys", canceledTrips.length),
                 _buildTripSubList(canceledTrips),
               ],
@@ -231,7 +230,6 @@ class _WalletPageState extends State<WalletPage> {
       itemCount: sectionList.length,
       itemBuilder: (context, index) {
         final journey = sectionList[index];
-        // to avoid deleting or editing the wrong item indexes when filtered
         int masterIndex = _trips.indexWhere((t) => t.id == journey.id);
 
         return Slidable(
@@ -240,7 +238,6 @@ class _WalletPageState extends State<WalletPage> {
             extentRatio: 0.5,
             motion: const ScrollMotion(),
             children: [
-              // 📝 EDIT OPTION
               SlidableAction(
                 onPressed: (context) => _showConfirmDialog(context, "Edit", masterIndex),
                 backgroundColor: const Color(0xFF3D5A5A),
@@ -248,7 +245,6 @@ class _WalletPageState extends State<WalletPage> {
                 icon: Icons.edit,
                 borderRadius: BorderRadius.circular(8),
               ),
-              // DELETE OPTION
               SlidableAction(
                 onPressed: (context) => _showConfirmDialog(context, "Delete", masterIndex),
                 backgroundColor: Colors.red.shade900,
@@ -381,6 +377,8 @@ class _WalletPageState extends State<WalletPage> {
   Future<void> _handleDelete(int index) async {
     Journey tripToDelete = _trips[index];
 
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     setState(() {
       _trips.removeAt(index);
     });
@@ -412,17 +410,15 @@ class _WalletPageState extends State<WalletPage> {
       await NotificationService.cancelTripAutomations(tripToDelete.id);
       await FirebaseFirestore.instance.collection('journeys').doc(tripToDelete.id).delete();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Trip and files deleted successfully")),
-        );
-      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text("Trip and files deleted successfully")),
+      );
     } catch (e) {
       if (mounted) {
         setState(() {
           _trips.insert(index, tripToDelete);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(content: Text("Error deleting trip: $e")),
         );
       }

@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Importato per la gestione dell'utente locale
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
@@ -18,11 +19,16 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _aiSearchController = TextEditingController();
   final DraggableScrollableController _sheetController = DraggableScrollableController();
+
+  // CONSIDERAZIONE 1: Stream persistente per l'utente, evita sfarfallii e ricaricamenti nel build
+  late final Stream<QuerySnapshot> _userJourneysStream;
+
+  // CONSIDERAZIONE 2: Cache in memoria per le coordinate geografiche (evita il Rate-Limiting)
+  final Map<String, LatLng> _geocodingCache = {};
+
   bool _isAiLoading = false;
   String _aiResponseTitle = "AI Travel Assistant 🧠";
   String _selectedCategory = 'All';
-
-
   double _currentSheetSize = 0.35;
 
   final List<Map<String, dynamic>> _categories = [
@@ -42,6 +48,18 @@ class _SearchPageState extends State<SearchPage> {
     }
   ];
 
+  @override
+  void initState() {
+    super.initState();
+
+    // Inizializzazione isolata dello Stream agganciato alla cache locale di FirebaseAuth
+    final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    _userJourneysStream = FirebaseFirestore.instance
+        .collection('journeys')
+        .where('userId', isEqualTo: currentUid)
+        .snapshots();
+  }
+
   Color _getMarkerColor(String? state) {
     switch (state) {
       case 'visited': return Colors.green;
@@ -52,13 +70,19 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Future<void> _askAiAgent(String city) async {
-    if (city.trim().isEmpty) return;
+    if (city.trim().isEmpty) {
+      // CONSIDERAZIONE 3: Feedback visivo tempestivo per l'utente anziché blocco silenzioso
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter a city name first.")),
+      );
+      return;
+    }
 
     setState(() {
       _isAiLoading = true;
     });
 
-    // Animate up smoothly
+    // Animazione fluida del pannello inferiore
     _sheetController.animateTo(
       0.80,
       duration: const Duration(milliseconds: 300),
@@ -84,6 +108,9 @@ class _SearchPageState extends State<SearchPage> {
 
       final response = await model.generateContent([Content.text(prompt)]);
       final String? responseText = response.text;
+
+      // CONSIDERAZIONE 4: Controllo di sicurezza obbligatorio dopo le chiamate asincrone HTTP
+      if (!mounted) return;
 
       if (responseText != null && responseText.isNotEmpty) {
         List<String> rawLines = responseText.split('\n');
@@ -114,6 +141,7 @@ class _SearchPageState extends State<SearchPage> {
         throw Exception("Empty payload response metadata state.");
       }
     } catch (err) {
+      if (!mounted) return;
       setState(() {
         _aiResponseTitle = "AI Assistant Offline ❌";
         _allRecommendations = [
@@ -136,31 +164,47 @@ class _SearchPageState extends State<SearchPage> {
         final String cityName = destination.toString().trim();
         if (cityName.isEmpty) continue;
 
+        // CONSIDERAZIONE 2 (Continua): Se la città è già registrata in cache saltiamo il Geocoding nativo
+        if (_geocodingCache.containsKey(cityName)) {
+          final cachedPoint = _geocodingCache[cityName]!;
+          localMarkers.add(_createMapMarker(cityName, cachedPoint, state));
+          continue;
+        }
+
         try {
-          List<Location> locations = await locationFromAddress(cityName);
+          List<Location> locations = await locationFromAddress(cityName).timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => [],
+          );
           if (locations.isNotEmpty) {
             final targetLocation = locations.first;
-            localMarkers.add(
-              Marker(
-                point: LatLng(targetLocation.latitude, targetLocation.longitude),
-                width: 50.0,
-                height: 50.0,
-                child: GestureDetector(
-                  onTap: () {
-                    _aiSearchController.text = cityName;
-                    _askAiAgent(cityName);
-                  },
-                  child: Icon(Icons.location_on, size: 40.0, color: _getMarkerColor(state)),
-                ),
-              ),
-            );
+            final point = LatLng(targetLocation.latitude, targetLocation.longitude);
+
+            // Salvataggio della coordinata indicizzata in memoria locale
+            _geocodingCache[cityName] = point;
+            localMarkers.add(_createMapMarker(cityName, point, state));
           }
         } catch (e) {
-          debugPrint("Location error: $e");
+          debugPrint("Location error for $cityName: $e");
         }
       }
     }
     return localMarkers;
+  }
+
+  Marker _createMapMarker(String cityName, LatLng point, String? state) {
+    return Marker(
+      point: point,
+      width: 50.0,
+      height: 50.0,
+      child: GestureDetector(
+        onTap: () {
+          _aiSearchController.text = cityName;
+          _askAiAgent(cityName);
+        },
+        child: Icon(Icons.location_on, size: 40.0, color: _getMarkerColor(state)),
+      ),
+    );
   }
 
   @override
@@ -169,10 +213,10 @@ class _SearchPageState extends State<SearchPage> {
       resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
-        title: const Text('Journey Explorer', overflow: TextOverflow.ellipsis),
+        title: const Text('Journey Explorer 🗺️', overflow: TextOverflow.ellipsis),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('journeys').snapshots(),
+        stream: _userJourneysStream, // Collegato allo Stream isolato e immutabile dell'utente
         builder: (context, snapshot) {
           if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -209,7 +253,6 @@ class _SearchPageState extends State<SearchPage> {
               SafeArea(
                 top: false, left: false, right: false, bottom: true,
                 child: NotificationListener<DraggableScrollableNotification>(
-
                   onNotification: (notification) {
                     _currentSheetSize = notification.extent;
                     return true;
@@ -234,14 +277,12 @@ class _SearchPageState extends State<SearchPage> {
                         ),
                         child: Stack(
                           children: [
-                            // Main Scrolling Body Context
                             Positioned.fill(
                               bottom: 80,
                               child: ListView(
                                 controller: scrollController,
                                 padding: const EdgeInsets.only(top: 12, bottom: 16),
                                 children: [
-                                  // Center Pull Handle Bar
                                   Center(
                                     child: Container(
                                       width: 40, height: 5,
@@ -254,12 +295,11 @@ class _SearchPageState extends State<SearchPage> {
                                     padding: const EdgeInsets.symmetric(horizontal: 20),
                                     child: Text(
                                       _aiResponseTitle,
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
+                                      style: Theme.of(context).textTheme.titleMedium,
                                     ),
                                   ),
                                   const SizedBox(height: 10),
 
-                                  // Horizontal Category Filter Selection Tab Bar
                                   SizedBox(
                                     height: 38,
                                     child: ListView.builder(
@@ -272,8 +312,9 @@ class _SearchPageState extends State<SearchPage> {
                                         return Padding(
                                           padding: const EdgeInsets.symmetric(horizontal: 4.0),
                                           child: ChoiceChip(
+                                            showCheckmark: false,
                                             avatar: Icon(cat['icon'], size: 16, color: isSelected ? Colors.white : const Color(0xFF3D5A5A)),
-                                            label: Text(cat['label'], style: const TextStyle(fontSize: 12)),
+                                            label: Text(cat['label'], style: Theme.of(context).textTheme.titleSmall),
                                             selected: isSelected,
                                             selectedColor: const Color(0xFF3D5A5A),
                                             onSelected: (bool selected) {
@@ -291,7 +332,6 @@ class _SearchPageState extends State<SearchPage> {
                                     child: Divider(height: 24),
                                   ),
 
-                                  // Curation Recommendation Cards
                                   if (_isAiLoading)
                                     const Padding(
                                       padding: EdgeInsets.only(top: 40),
@@ -313,7 +353,7 @@ class _SearchPageState extends State<SearchPage> {
                                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                         child: Card(
                                           elevation: 0,
-                                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                           child: ListTile(
                                             leading: Text(item['emoji'] ?? '📍', style: const TextStyle(fontSize: 24)),
@@ -330,7 +370,6 @@ class _SearchPageState extends State<SearchPage> {
                               ),
                             ),
 
-                            // Sticky Action Footer Input Bar
                             Positioned(
                               left: 0, right: 0, bottom: 0,
                               child: Container(
