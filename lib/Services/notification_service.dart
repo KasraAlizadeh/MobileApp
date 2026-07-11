@@ -89,6 +89,7 @@ class NotificationService {
     try {
       DateTime startDate = DateFormat('yyyy-MM-dd').parse(startDateStr);
       DateTime endDate = DateFormat('yyyy-MM-dd').parse(endDateStr);
+      DateTime endOfTripDay = endDate.copyWith(hour: 23, minute: 59, second: 59);
 
       // Define clear trigger times
       // Temporary test offsets inside scheduleTripAutomations:
@@ -100,9 +101,9 @@ class NotificationService {
       DateTime notification2Time = startDate.copyWith(hour: 7, minute: 0);  // Trip Day Morning at 7:00 AM
       DateTime notification3Time = endDate.copyWith(hour: 18, minute: 0);   // Finishing Day at 6:00 PM
 
-      DateTime photoReminder1 = endDate.add(const Duration(days: 1)).copyWith(hour: 11, minute: 0); // 1 day after at 11:00 AM
-      DateTime photoReminder2 = endDate.add(const Duration(days: 2)).copyWith(hour: 16, minute: 0); // 2 days after at 4:00 PM
-      DateTime photoReminder3 = endDate.add(const Duration(days: 7)).copyWith(hour: 10, minute: 0); // 1 week after at 10:00 AM
+      DateTime photoReminder1 = endOfTripDay.add(const Duration(days: 1)).copyWith(hour: 11, minute: 0); // 1 day after at 11:00 AM
+      DateTime photoReminder2 = endOfTripDay.add(const Duration(days: 2)).copyWith(hour: 16, minute: 0); // 2 days after at 4:00 PM
+      DateTime photoReminder3 = endOfTripDay.add(const Duration(days: 7)).copyWith(hour: 10, minute: 0); // 1 week after at 10:00 AM
 
       // Notification 1: Day before warning
       if (notification1Time.isAfter(DateTime.now())) {
@@ -231,6 +232,7 @@ class NotificationService {
         notificationLayout: NotificationLayout.Default,
         actionType: ActionType.Default,
       ),
+      schedule: NotificationCalendar.fromDate(date: targetTime),
     );
   }
   static Future<void> cancelTripAutomations(String journeyId) async {

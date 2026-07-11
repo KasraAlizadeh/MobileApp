@@ -188,42 +188,6 @@ class _MainPageState extends State<MainPage> {
         }
       },
     );
-    /*AwesomeNotifications().setListeners(
-      onActionReceivedMethod: (ReceivedAction receivedAction) async {
-        String? journeyId = receivedAction.payload?['journeyId'];
-        if (journeyId == null) return;
-        if (receivedAction.buttonKeyPressed == 'YES_ACTION') {
-          print("User confirmed going on journey: $journeyId");
-          await FirebaseFirestore.instance
-              .collection('journeys')
-              .doc(journeyId)
-              .update({'state': 'visited'}); // Or 'ongoing', depending on your naming preference!
-
-          // Force a notification block update alert on screen if app is running
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Awesome! Have a wonderful trip! 🌍")),
-            );
-          }
-        }
-        else if (receivedAction.buttonKeyPressed == 'DELETE_ACTION') {
-          print("User cancelled journey: $journeyId");
-          await FirebaseFirestore.instance
-              .collection('journeys')
-              .doc(journeyId)
-              .update({'state': 'cancelled'});
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Journey marked as cancelled.")),
-            );
-          }
-        }
-        else if (receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION') {
-          _navigateToEditJourney(journeyId);
-        }
-      },
-    );*/
   }
   void _navigateToEditJourney(String journeyId) async {
 

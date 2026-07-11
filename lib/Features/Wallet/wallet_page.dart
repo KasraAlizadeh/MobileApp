@@ -145,7 +145,7 @@ class _WalletPageState extends State<WalletPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('My Journeys ✈️', overflow: TextOverflow.ellipsis),
+        title: const Text('My Journey️', overflow: TextOverflow.ellipsis),
       ),
       body: RefreshIndicator(
         onRefresh: _refreshData,

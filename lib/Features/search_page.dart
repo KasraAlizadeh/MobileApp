@@ -5,7 +5,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'Wallet/journey.dart';
 
 String apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
 
@@ -170,7 +169,7 @@ class _SearchPageState extends State<SearchPage> {
       resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
-        title: const Text('Journey Explorer 🗺️', overflow: TextOverflow.ellipsis),
+        title: const Text('Journey Explorer', overflow: TextOverflow.ellipsis),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('journeys').snapshots(),
@@ -210,14 +209,12 @@ class _SearchPageState extends State<SearchPage> {
               SafeArea(
                 top: false, left: false, right: false, bottom: true,
                 child: NotificationListener<DraggableScrollableNotification>(
-                  // 🌟 FIX: Listen to the user dragging the sheet and save its size in real-time
                   onNotification: (notification) {
                     _currentSheetSize = notification.extent;
                     return true;
                   },
                   child: DraggableScrollableSheet(
                     controller: _sheetController,
-                    // 🌟 FIX: Feed the saved state size back into the sheet configurations
                     initialChildSize: _currentSheetSize,
                     minChildSize: 0.35,
                     maxChildSize: 0.85,
@@ -279,7 +276,6 @@ class _SearchPageState extends State<SearchPage> {
                                             selected: isSelected,
                                             selectedColor: const Color(0xFF3D5A5A),
                                             onSelected: (bool selected) {
-                                              // 🌟 FIX: Tab switching now changes data without resetting layout sizes
                                               setState(() {
                                                 _selectedCategory = cat['id'];
                                               });
