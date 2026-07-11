@@ -5,7 +5,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import '../Wallet/journey.dart';
 
 String apiKey = dotenv.env['GEMINI_API_KEY'] ?? 'Key not found';
 
@@ -170,7 +169,7 @@ class _SearchPageState extends State<SearchPage> {
       resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
-        title: const Text('Journey Explorer 🗺️', overflow: TextOverflow.ellipsis),
+        title: const Text('Journey Explorer', overflow: TextOverflow.ellipsis),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('journeys').snapshots(),

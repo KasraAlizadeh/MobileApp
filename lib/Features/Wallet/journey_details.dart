@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +11,8 @@ import 'journey.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class JourneyDetailsPage extends StatefulWidget {
   final Journey? existingJourney; // If null, we are ADDING. If not null, we are EDITING, simple bro!
@@ -23,7 +27,6 @@ class JourneyDetailsPage extends StatefulWidget {
 }
 
 class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
-
   TextEditingController _nameController = TextEditingController();
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
@@ -37,6 +40,8 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   bool _isSaving = false;
   String _selectedType = 'Travel Type';
   File? _newVisaFile, _newTicketFile, _newInsuranceFile;
+  List<String> _italianCities = [];
+  bool _isCitiesLoading = true;
   List<String> _finalPdfUrls = ["", "", ""]; // IN ORDER [Visa, Ticket, Insurance]
   List<String> _existingPhotoUrls = []; // Track photos fetched from Firestore
   List<File> _newPhotosToUpload = [];   // Track new photos selected in this session
@@ -305,17 +310,111 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         _startController.text,
         _endController.text,
       );
-      print("✅ Successfully saved and synced files to updated folder paths!");
+      print("Successfully saved and synced files to updated folder paths!");
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error saving journey: $e")));
     } finally {
       setState(() => _isSaving = false);
     }
   }
+  Future<void> _loadItalianCities() async {
+    try {
+      // 1. Read your it.json asset file
+      final String jsonString = await rootBundle.loadString('assets/data/it.json');
+
+      // 2. Decode the JSON string
+      final List<dynamic> jsonResponse = jsonDecode(jsonString);
+
+      // 3. Extract only the 'city' name strings and eliminate any duplicate entries
+      final Set<String> uniqueCities = jsonResponse
+          .map((item) => item['city'].toString().trim())
+          .where((cityName) => cityName.isNotEmpty)
+          .toSet();
+
+      if (mounted) {
+        setState(() {
+          _italianCities = uniqueCities.toList()..sort(); // Sorted alphabetically
+          _isCitiesLoading = false;
+          debugPrint("Loaded ${_italianCities.length} cities from it.json!");
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading or parsing it.json: $e");
+      if (mounted) {
+        setState(() => _isCitiesLoading = false);
+      }
+    }
+  }
+
+// 🌟 THE PERMISSION GUARD FUNCTION
+  Future<void> _handlePhotoSelectionPermission() async {
+    PermissionStatus status;
+
+    // Android 13+ (API 33+) requires checking READ_MEDIA_IMAGES
+    if (Platform.isAndroid && await _getAndroidSDKVersion() >= 33) {
+      status = await Permission.photos.status;
+      if (status.isDenied) {
+        status = await Permission.photos.request();
+      }
+    } else {
+      // Android 12 and below requires checking STORAGE
+      status = await Permission.storage.status;
+      if (status.isDenied) {
+        status = await Permission.storage.request();
+      }
+    }
+
+    // Handle the results gracefully
+    if (status.isGranted) {
+      // Permission allowed! Safe to open your existing picker method
+      _pickImage();
+    } else if (status.isPermanentlyDenied) {
+      // The user clicked "Don't ask again". Guide them to Device Settings.
+      _showPermissionSettingsDialog();
+    } else {
+      // User denied it this time
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Storage permission is required to upload trip photos.")),
+      );
+    }
+  }
+
+// Helper to find out the active Android SDK version dynamically
+  Future<int> _getAndroidSDKVersion() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      return androidInfo.version.sdkInt;
+    }
+    return 0;
+  }
+
+// Dialog explaining how to unlock permissions manually if permanently locked out
+  void _showPermissionSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Photos Permission Required"),
+        content: const Text("You have disabled photo access. Please enable it in the device settings to add journey memories."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings(); // Native shortcut opens app settings instantly
+            },
+            child: const Text("Open Settings", style: TextStyle(color: Color(0xFF3D5A5A), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
   @override
   void initState() {
     super.initState();
-
+    _loadItalianCities();
     if (widget.existingJourney != null) {
       // WE ARE IN EDIT MODE
       final j = widget.existingJourney!;
@@ -388,21 +487,18 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       appBar: AppBar(
         title: Text(
           widget.isReadOnly
-              ? 'Journey Details ✈️'
-              : (widget.existingJourney == null ? 'New Journey ✈️' : 'Edit Journey ✈️'),
+              ? 'Journey Details'
+              : (widget.existingJourney == null ? 'New Journey' : 'Edit Journey'),
           overflow: TextOverflow.ellipsis,
         ),
       ),
       body: Column(
         children: [
-          // to keep the layout properly sized i used expanded
           Expanded(
             child: Form(
               key: _formKey,
-              // the scroll view sits outside the ignore block so scrolling workds well
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20.0),
-                // IgnorePointer is placed here to only target form fields
                 child: IgnorePointer(
                   ignoring: widget.isReadOnly,
                   child: Column(
@@ -414,7 +510,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                             _buildTextField("Name your new trip", _nameController, isMandatory: true),
                             const SizedBox(height: 15),
 
-                            // --- DYNAMIC DESTINATIONS ---
                             ..._destControllers.asMap().entries.map((entry) {
                               int index = entry.key;
                               TextEditingController controller = entry.value;
@@ -422,23 +517,110 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
-                                child: _buildTextField(
-                                    isPrimary ? "Destination" : "Destination ${index + 1}",
-                                    controller,
-                                    icon: isPrimary ? Icons.add_box : Icons.delete,
-                                    iconColor: isPrimary ? const Color(0xFF3D5A5A) : Colors.red,
-                                    onIconTap: widget.isReadOnly ? null : () {
-                                      setState(() {
-                                        if (isPrimary) {
-                                          _destControllers.add(TextEditingController());
-                                        } else {
-                                          _destControllers.removeAt(index);
+                                child: _isCitiesLoading
+                                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A)))
+                                    : Autocomplete<String>(
+                                  // Pass a unique key matching the controller hash to help Flutter trace it in the loop
+                                  key: ValueKey('autocomplete_${controller.hashCode}'),
+                                  optionsBuilder: (TextEditingValue textEditingValue) {
+                                    if (textEditingValue.text.isEmpty) {
+                                      return const Iterable<String>.empty();
+                                    }
+                                    return _italianCities.where((String city) {
+                                      return city.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                                    });
+                                  },
+                                  onSelected: (String selection) {
+                                    setState(() {
+                                      _destControllers[index].text = selection;
+                                    });
+                                    debugPrint('Validated city chosen at index $index: $selection');
+                                  },
+                                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                                    // Sync initial value if editing an existing journey
+                                    if (textEditingController.text.isEmpty && controller.text.isNotEmpty) {
+                                      textEditingController.text = controller.text;
+                                    }
+
+                                    // 🛡️ Garbage Filter Validation: Wipe input instantly if it's not a valid city on focus loss
+                                    focusNode.addListener(() {
+                                      if (!focusNode.hasFocus) {
+                                        final text = textEditingController.text.trim();
+                                        if (text.isNotEmpty && !_italianCities.contains(text)) {
+                                          setState(() {
+                                            textEditingController.clear();
+                                            _destControllers[index].clear();
+                                          });
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text("⚠️ Invalid destination. Please select a valid city from the list!"),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
                                         }
-                                      });
-                                    }, isMandatory: true),
+                                      }
+                                    });
+
+                                    // Keep your array controller data synced with typing
+                                    textEditingController.addListener(() {
+                                      controller.text = textEditingController.text;
+                                    });
+
+                                    // 🎯 THE FIX APPLIED: Forward the critical focusNode to your custom field template!
+                                    return _buildTextField(
+                                      isPrimary ? "Destination" : "Destination ${index + 1}",
+                                      textEditingController,
+                                      icon: isPrimary ? Icons.add_box : Icons.delete,
+                                      iconColor: isPrimary ? const Color(0xFF3D5A5A) : Colors.red,
+                                      onIconTap: widget.isReadOnly ? null : () {
+                                        setState(() {
+                                          if (isPrimary) {
+                                            _destControllers.add(TextEditingController());
+                                          } else {
+                                            _destControllers.removeAt(index);
+                                          }
+                                        });
+                                      },
+                                      isMandatory: true,
+                                      focusNode: focusNode, // <-- Critical focus hook assignment!
+                                    );
+                                  },
+                                  optionsViewBuilder: (context, onSelected, options) {
+                                    return Align(
+                                      alignment: Alignment.topLeft,
+                                      child: Material(
+                                        elevation: 8.0,
+                                        color: Theme.of(context).cardColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Container(
+                                          width: MediaQuery.of(context).size.width - 40,
+                                          constraints: const BoxConstraints(maxHeight: 200),
+                                          child: ListView.builder(
+                                            padding: EdgeInsets.zero,
+                                            shrinkWrap: true,
+                                            itemCount: options.length,
+                                            itemBuilder: (BuildContext context, int idx) {
+                                              final String option = options.elementAt(idx);
+                                              return ListTile(
+                                                leading: const Icon(Icons.location_on, color: Color(0xFF3D5A5A), size: 18),
+                                                title: Text(
+                                                  option,
+                                                  style: TextStyle(
+                                                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                onTap: () => onSelected(option),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                               );
                             }),
-
                             const SizedBox(height: 10),
 
                             // --- DATE FIELDS ---
@@ -449,7 +631,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                       "Start Date",
                                       _startController,
                                       icon: Icons.calendar_month,
-                                      onIconTap: () => _selectDate(context, _startController,true),
+                                      onIconTap: () => _selectDate(context, _startController, true),
                                       readOnly: true,
                                       isMandatory: true),
                                 ),
@@ -459,10 +641,9 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                       "End Date",
                                       _endController,
                                       icon: Icons.calendar_month,
-                                      onIconTap: () => _selectDate(context, _endController,false),
+                                      onIconTap: () => _selectDate(context, _endController, false),
                                       readOnly: true,
-                                      isMandatory: true
-                                  ),
+                                      isMandatory: true),
                                 ),
                               ],
                             ),
@@ -478,7 +659,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Photo Collection Gallery View
                               if (_existingPhotoUrls.isEmpty && _newPhotosToUpload.isEmpty)
                                 const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 10),
@@ -509,7 +689,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                               if (!widget.isReadOnly)
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3D5A5A), foregroundColor: Colors.white),
-                                  onPressed: _pickImage,
+                                  onPressed: _handlePhotoSelectionPermission,
                                   icon: const Icon(Icons.add_a_photo),
                                   label: const Text("Add Photo"),
                                 ),
@@ -529,7 +709,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                               padding: const EdgeInsets.only(bottom: 10),
                               child: Row(
                                 children: [
-                                  // --- DROPDOWN FOR MODE ---
                                   Expanded(
                                     flex: 2,
                                     child: Container(
@@ -559,8 +738,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-
-                                  // --- TEXT FIELD FOR NUMBER ---
                                   Expanded(
                                     flex: 3,
                                     child: _buildTextField(
@@ -589,7 +766,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-
                       _buildSectionWrapper(
                         title: "Accommodation Info",
                         child: Column(
@@ -625,8 +801,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                 ),
                               );
                             }),
-
-                            // ADD HOTEL BUTTON (Disabled dynamically when read-only)
                             if (!widget.isReadOnly)
                               TextButton.icon(
                                 onPressed: () {
@@ -644,7 +818,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 20),
                       _buildSectionWrapper(
                         title: "Activities / Places",
@@ -686,9 +859,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                 ),
                               );
                             }),
-
                             const SizedBox(height: 15),
-
                             TextField(
                               controller: _notesController,
                               maxLines: 3,
@@ -698,7 +869,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                               ),
                             ),
-
                             const SizedBox(height: 20),
                             _buildSectionWrapper(
                               title: "Special Documents",
@@ -710,11 +880,9 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                                   const SizedBox(height: 10),
                                   _buildFilePickerRow("Travel Insurance", _insuranceController, 2),
                                   const SizedBox(height: 15),
-
                                   const Divider(),
                                   const Text("Other Documents", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 10),
-
                                   ..._extraDocs.asMap().entries.map((entry) {
                                     int index = entry.key;
                                     bool isPrimary = index == 0;
@@ -764,34 +932,123 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 10), // Small spacer before sticky footer
+                      const SizedBox(height: 10),
                     ],
                   ),
-                ),
               ),
+              )
             ),
           ),
-
-
+          // Locate the final bottom Padding inside your build method and replace it with this:
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: widget.isReadOnly
-                ? ElevatedButton( // handling action button when in view mode
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey.shade700,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Go Back", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ? Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade900,
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _isSaving
+                        ? null
+                        : () async {
+                      // Triggers a custom validation alert directly on screen
+                      bool confirmDelete = await showDialog(
+                        context: context,
+                        builder: (BuildContext dialogContext) {
+                          return AlertDialog(
+                            backgroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                            title: const Text("Delete Trip", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color:Colors.teal)),
+                            content: const Text("Are you sure you want to permanently delete this trip and all its attached files?",
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogContext, false),
+                                child: const Text("Cancel", style: TextStyle(color: Color(0xFF3D5A5A))),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogContext, true),
+                                child: const Text("Delete", style: TextStyle(color: Colors.red)),
+                              ),
+                            ],
+                          );
+                        },
+                      ) ?? false;
+
+                      if (confirmDelete) {
+                        setState(() => _isSaving = true);
+                        try {
+                          String userId = widget.existingJourney?.userId ?? '';
+                          String journeyId = widget.existingJourney?.id ?? '';
+                          if (userId.isNotEmpty && journeyId.isNotEmpty) {
+                            final ListResult pdfsDir = await FirebaseStorage.instance
+                                .ref().child('media/$userId/$journeyId/pdfs').listAll();
+                            for (Reference fileRef in pdfsDir.items) {
+                              await fileRef.delete();
+                            }
+                            final ListResult imagesDir = await FirebaseStorage.instance
+                                .ref().child('media/$userId/$journeyId/images').listAll();
+                            for (Reference fileRef in imagesDir.items) {
+                              await fileRef.delete();
+                            }
+                          }
+
+                          await NotificationService.cancelTripAutomations(journeyId);
+
+                          await FirebaseFirestore.instance.collection('journeys').doc(journeyId).delete();
+
+                          if (mounted) {
+                            Navigator.pop(context, true); // Returns true to trigger updates on wallet screen
+                          }
+                        } catch (e) {
+                          setState(() => _isSaving = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Error deleting trip: $e")),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.delete, color: Colors.white, size: 18),
+                    label: const Text("Delete", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF3D5A5A),
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      // Direct navigation trick: re-opens the same page but with isReadOnly turned off!
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => JourneyDetailsPage(
+                            existingJourney: widget.existingJourney,
+                            isReadOnly: false, // Opens edit fields up instantly!
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.edit, color: Colors.white, size: 18),
+                    label: const Text("Edit Trip", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             )
-                : ElevatedButton(// handling action button when in add/eidt mode
+                : ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3D5A5A),
                 minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed:_isSaving
+              onPressed: _isSaving
                   ? null
                   : () async {
                 if (_formKey.currentState!.validate()) {
@@ -809,10 +1066,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                   ? const SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.5,
-                ),
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
               )
                   : Text(widget.existingJourney == null ? "Save" : "Update", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
@@ -823,10 +1077,11 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   }
   Widget _buildTextField(String hint,
       TextEditingController controller,
-      {IconData? icon, VoidCallback? onIconTap, Color? iconColor, bool readOnly = false, bool isMandatory = false} // Added isMandatory
+      {IconData? icon, VoidCallback? onIconTap, Color? iconColor, bool readOnly = false, bool isMandatory = false, FocusNode? focusNode,} // Added isMandatory
       )
   {return TextFormField(
       controller: controller,
+    focusNode: focusNode,
       readOnly: widget.isReadOnly ? true : readOnly,
       onTap: (widget.isReadOnly ? null : (readOnly ? onIconTap : null)),
       validator: (value) {
@@ -939,6 +1194,147 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       ],
     );
   }
-
-
 }
+class DestinationAutocompleteField extends StatefulWidget {
+  final int index;
+  final TextEditingController controller;
+  final bool isPrimary;
+  final bool isReadOnly;
+  final List<String> citiesList;
+  final Function() onIconTap;
+  final Widget Function(String, TextEditingController, {IconData? icon, Color? iconColor, VoidCallback? onIconTap, bool isMandatory}) buildTextField;
+
+  const DestinationAutocompleteField({
+    super.key,
+    required this.index,
+    required this.controller,
+    required this.isPrimary,
+    required this.isReadOnly,
+    required this.citiesList,
+    required this.onIconTap,
+    required this.buildTextField,
+  });
+
+  @override
+  State<DestinationAutocompleteField> createState() => _DestinationAutocompleteFieldState();
+}
+
+class _DestinationAutocompleteFieldState extends State<DestinationAutocompleteField> {
+  late TextEditingController _localAutoCompleteController;
+
+  @override
+  void initState() {
+    super.initState();
+    _localAutoCompleteController = TextEditingController(text: widget.controller.text);
+
+    // Sync changes from the autocomplete view back to the master controller array safely
+    _localAutoCompleteController.addListener(() {
+      widget.controller.text = _localAutoCompleteController.text;
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant DestinationAutocompleteField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the master controller text changes from outside, sync the local controller text view
+    if (widget.controller.text != _localAutoCompleteController.text) {
+      _localAutoCompleteController.text = widget.controller.text;
+    }
+  }
+
+  @override
+  void dispose() {
+    _localAutoCompleteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Autocomplete<String>(
+      optionsBuilder: (TextEditingValue textEditingValue) {
+        if (textEditingValue.text.isEmpty) {
+          return const Iterable<String>.empty();
+        }
+        return widget.citiesList.where((String city) {
+          return city.toLowerCase().contains(textEditingValue.text.toLowerCase());
+        });
+      },
+      onSelected: (String selection) {
+        setState(() {
+          _localAutoCompleteController.text = selection;
+          widget.controller.text = selection;
+        });
+      },
+      fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+        // Enforce synchronization during render intervals
+        if (textEditingController.text != _localAutoCompleteController.text) {
+          textEditingController.text = _localAutoCompleteController.text;
+        }
+
+        // Garbage Validation Filter on Focus Loss
+        focusNode.addListener(() {
+          if (!focusNode.hasFocus) {
+            final text = textEditingController.text.trim();
+            if (text.isNotEmpty && !widget.citiesList.contains(text)) {
+              setState(() {
+                textEditingController.clear();
+                _localAutoCompleteController.clear();
+                widget.controller.clear();
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Invalid destination. Please select a valid city from the list!"),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          }
+        });
+
+        // Reuse your original field layout parameters
+        return widget.buildTextField(
+          widget.isPrimary ? "Destination" : "Destination ${widget.index + 1}",
+          textEditingController,
+          icon: widget.isPrimary ? Icons.add_box : Icons.delete,
+          iconColor: widget.isPrimary ? const Color(0xFF3D5A5A) : Colors.red,
+          onIconTap: widget.isReadOnly ? null : widget.onIconTap,
+          isMandatory: true,
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 8.0,
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: MediaQuery.of(context).size.width - 40,
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (BuildContext context, int idx) {
+                  final String option = options.elementAt(idx);
+                  return ListTile(
+                    leading: const Icon(Icons.location_on, color: Color(0xFF3D5A5A), size: 18),
+                    title: Text(
+                      option,
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                        fontSize: 14,
+                      ),
+                    ),
+                    onTap: () => onSelected(option),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
