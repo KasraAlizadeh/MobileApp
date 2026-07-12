@@ -8,7 +8,7 @@ import 'package:shimmer/shimmer.dart';
 import '../../Services/google_places_service.dart';
 import '../../Services/location_service.dart';
 import '../../Services/osm_service.dart';
-import '../Wallet/journey.dart';
+import '../../Models/journey.dart';
 import '../Wallet/journey_details.dart';
 
 class HomePage extends StatefulWidget {

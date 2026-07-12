@@ -6,13 +6,18 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../Services/city_loader_service.dart';
+import '../../Services/file_picker_service.dart';
 import '../../Services/notification_service.dart';
-import 'journey.dart';
+import '../../Models/journey.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import '../../Services/journey_storage_service.dart';
+import '../../Services/photo_picker_service.dart';
+import '../../Utils/journey_formatter.dart';
 
 class JourneyDetailsPage extends StatefulWidget {
   final Journey? existingJourney;
@@ -83,27 +88,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       if (doc['name'] is TextEditingController) (doc['name'] as TextEditingController).dispose();
     }
     super.dispose();
-  }
-
-  List<String> _extractText(List<TextEditingController> controllers) {
-    return controllers
-        .map((c) => c.text.trim())
-        .where((text) => text.isNotEmpty)
-        .toList();
-  }
-
-  List<Map<String, dynamic>> _extractRows(List<Map<String, dynamic>> rows) {
-    return rows.map((row) {
-      final Map<String, dynamic> cleanRow = {};
-      row.forEach((key, value) {
-        if (value is TextEditingController) {
-          cleanRow[key] = value.text.trim();
-        } else {
-          cleanRow[key] = value;
-        }
-      });
-      return cleanRow;
-    }).toList();
   }
 
   Future<void> _selectDate(BuildContext context, TextEditingController controller, bool isStartDate) async {
@@ -177,11 +161,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   }
 
   Future<void> _pickFile(TextEditingController controller, int index) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'png', 'doc'],
-    );
-
+    final result = await FilePickerService.pickCustomFile(['pdf', 'jpg', 'png', 'doc']);
     if (result != null && mounted) {
       setState(() {
         File pickedFile = File(result.files.single.path!);
@@ -195,10 +175,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
 
   Future<void> _pickExtraDocument(int index) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'png', 'docx'],
-      );
+      final result = await FilePickerService.pickCustomFile(['pdf', 'jpg', 'png', 'docx']);
       if (result != null && mounted) {
         setState(() {
           _extraDocs[index]['fileName'] = result.files.single.name;
@@ -207,37 +184,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
     } catch (e) {
       debugPrint("File picker error: $e");
     }
-  }
-
-  Future<String> _upload(String fileName, File file, String userId, String journeyId, String subFolder) async {
-    Reference ref = FirebaseStorage.instance
-        .ref()
-        .child('media/$userId/$journeyId/$subFolder/$fileName');
-    await ref.putFile(file);
-    return await ref.getDownloadURL();
-  }
-
-  Future<List<String>> _moveStorageFolder(String oldFolderName, String newFolderName, List<String> currentUrls) async {
-    List<String> updatedUrls = List.from(currentUrls);
-    List<String> fileNames = ["visa.pdf", "ticket.pdf", "insurance.pdf"];
-
-    for (int i = 0; i < currentUrls.length; i++) {
-      if (currentUrls[i].isEmpty) continue;
-      try {
-        Reference oldRef = FirebaseStorage.instance.ref().child('pdfs/$oldFolderName/${fileNames[i]}');
-        Reference newRef = FirebaseStorage.instance.ref().child('pdfs/$newFolderName/${fileNames[i]}');
-
-        final data = await oldRef.getData();
-        if (data != null) {
-          await newRef.putData(data);
-          updatedUrls[i] = await newRef.getDownloadURL();
-          await oldRef.delete();
-        }
-      } catch (e) {
-        print("Failed moving file index $i: $e");
-      }
-    }
-    return updatedUrls;
   }
 
   Future<void> saveJourney() async {
@@ -278,21 +224,27 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         String oldFolder = widget.existingJourney!.name;
 
         if (oldFolder != newFolder) {
-          _finalPdfUrls = await _moveStorageFolder(oldFolder, newFolder, _finalPdfUrls);
+          _finalPdfUrls = await JourneyStorageService.moveStorageFolder(oldFolder, newFolder, _finalPdfUrls);
         }
       } else {
         docRef = FirebaseFirestore.instance.collection('journeys').doc();
         targetJourneyId = docRef.id;
       }
 
-      if (_newVisaFile != null) _finalPdfUrls[0] = await _upload("visa.pdf", _newVisaFile!, userId, targetJourneyId, "pdfs");
-      if (_newTicketFile != null) _finalPdfUrls[1] = await _upload("ticket.pdf", _newTicketFile!, userId, targetJourneyId, "pdfs");
-      if (_newInsuranceFile != null) _finalPdfUrls[2] = await _upload("insurance.pdf", _newInsuranceFile!, userId, targetJourneyId, "pdfs");
+      if (_newVisaFile != null) {
+        _finalPdfUrls[0] = await JourneyStorageService.upload("visa.pdf", _newVisaFile!, userId, targetJourneyId, "pdfs");
+      }
+      if (_newTicketFile != null) {
+        _finalPdfUrls[1] = await JourneyStorageService.upload("ticket.pdf", _newTicketFile!, userId, targetJourneyId, "pdfs");
+      }
+      if (_newInsuranceFile != null) {
+        _finalPdfUrls[2] = await JourneyStorageService.upload("insurance.pdf", _newInsuranceFile!, userId, targetJourneyId, "pdfs");
+      }
 
       List<String> freshlyUploadedPhotoUrls = [];
       for (int i = 0; i < _newPhotosToUpload.length; i++) {
-        String fileName = "img_${DateTime.now().millisecondsSinceEpoch}_$i.jpg";
-        String downloadUrl = await _upload(fileName, _newPhotosToUpload[i], userId, targetJourneyId, "images");
+        String fileName = "img_\${DateTime.now().millisecondsSinceEpoch}_\$i.jpg";
+        String downloadUrl = await JourneyStorageService.upload(fileName, _newPhotosToUpload[i], userId, targetJourneyId, "images");
         freshlyUploadedPhotoUrls.add(downloadUrl);
       }
 
@@ -303,10 +255,10 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         'travelType': _selectedType,
         'startDate': dbStartDate,
         'endDate': dbEndDate,
-        'destinations': _extractText(_destControllers),
-        'transportation': _extractRows(_transportRows),
-        'accommodation': _extractRows(_accommodationRows),
-        'activities': _extractRows(_activityRows),
+        'destinations': JourneyFormatter.extractText(_destControllers),
+        'transportation': JourneyFormatter.extractRows(_transportRows),
+        'accommodation': JourneyFormatter.extractRows(_accommodationRows),
+        'activities': JourneyFormatter.extractRows(_activityRows),
         'notes': _notesController.text.trim(),
         'pdfUrls': _finalPdfUrls,
         'photoUrls': consolidatedPhotoUrls,
@@ -333,35 +285,30 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   }
 
   Future<void> _loadItalianCities() async {
-    try {
-      final String jsonString = await rootBundle.loadString('assets/data/it.json');
-      final List<dynamic> jsonResponse = jsonDecode(jsonString);
-      final Set<String> uniqueCities = jsonResponse
-          .map((item) => item['city'].toString().trim())
-          .where((cityName) => cityName.isNotEmpty)
-          .toSet();
-
-      if (mounted) {
-        setState(() {
-          _italianCities = uniqueCities.toList()..sort();
-          _isCitiesLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isCitiesLoading = false);
+    final cities = await CityLoaderService.loadCities();
+    if (mounted) {
+      setState(() {
+        _italianCities = cities;
+        _isCitiesLoading = false;
+      });
     }
   }
 
   Future<void> _handlePhotoSelectionPermission() async {
     PermissionStatus status;
-    if (Platform.isAndroid && await _getAndroidSDKVersion() >= 33) {
+    if (Platform.isAndroid && await PhotoPickerService.getAndroidSDKVersion() >= 33) {
       status = await Permission.photos.request();
     } else {
       status = await Permission.storage.request();
     }
 
     if (status.isGranted) {
-      _pickImage();
+      final selectedImages = await PhotoPickerService.pickMultiImages();
+      if (mounted && selectedImages.isNotEmpty) {
+        setState(() {
+          _newPhotosToUpload.addAll(selectedImages);
+        });
+      }
     } else if (status.isPermanentlyDenied) {
       _showPermissionSettingsDialog();
     } else {
@@ -371,14 +318,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         );
       }
     }
-  }
-
-  Future<int> _getAndroidSDKVersion() async {
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      return androidInfo.version.sdkInt;
-    }
-    return 0;
   }
 
   void _showPermissionSettingsDialog() {
@@ -459,16 +398,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       _activityRows = [{'activity': TextEditingController(), 'place': TextEditingController()}];
     }
     _extraDocs.add({'name': TextEditingController(), 'fileName': 'No file selected'});
-  }
-
-  Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final List<XFile> images = await picker.pickMultiImage(imageQuality: 80);
-    if (images.isNotEmpty && mounted) {
-      setState(() {
-        _newPhotosToUpload.addAll(images.map((xFile) => File(xFile.path)).toList());
-      });
-    }
   }
 
   @override

@@ -6,7 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'Features/Wallet/journey.dart';
+import 'Models/journey.dart';
 import 'Features/Wallet/journey_details.dart';
 import 'firebase_options.dart';
 import 'Appearance/theme_controller.dart';

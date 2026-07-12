@@ -6,7 +6,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../Services/notification_service.dart';
-import 'journey.dart';
+import '../../Models/journey.dart';
 import 'journey_details.dart';
 
 class WalletPage extends StatefulWidget {
