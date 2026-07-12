@@ -1,12 +1,13 @@
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../firebase_options.dart';
 
-/// Handler of background actions
 @pragma("vm:entry-point")
 Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,12 +31,14 @@ Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) asy
       await AwesomeNotifications().cancel(journeyId.hashCode + 2);
     } catch (err) {
       print("Error confirming trip in background: $err");
-      await FirebaseFirestore.instance.collection('logs').add({
-        'timestamp': FieldValue.serverTimestamp(),
-        'journeyId': journeyId,
-        'errorMessage': err.toString(),
-        'location': 'YES_ACTION_BACKGROUND'
-      });
+      try {
+        await FirebaseFirestore.instance.collection('logs').add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'journeyId': journeyId,
+          'errorMessage': err.toString(),
+          'location': 'YES_ACTION_BACKGROUND'
+        });
+      } catch (_) {}
     }
   }
   else if (receivedAction.buttonKeyPressed == 'CANCEL_ACTION') {
@@ -64,10 +67,11 @@ Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) asy
 }
 
 class NotificationService {
-  //Main notification channel initialization
+  static const String _notificationsEnabledKey = 'notifications_enabled';
+
   static Future<void> initialize() async {
     await AwesomeNotifications().initialize(
-      null, // Use the default app icon
+      null,
       [
         NotificationChannel(
           channelGroupKey: 'trip_reminders_group',
@@ -82,18 +86,56 @@ class NotificationService {
     );
   }
 
-  /// Automatic planning of temporal sequence of notifications
+  static Future<void> logNotificationToHistory(String title, String body) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('notification_history').add({
+        'userId': user.uid,
+        'title': title,
+        'body': body,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint("Error logging notification: $e");
+    }
+  }
+
+  static Future<bool> areNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_notificationsEnabledKey) ?? true;
+  }
+
+  static Future<void> setNotificationsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_notificationsEnabledKey, enabled);
+    if (!enabled) {
+      await AwesomeNotifications().cancelAll();
+    }
+  }
+
   static Future<void> scheduleTripAutomations(
       String journeyId,
       String journeyName,
       String startDateStr,
       String endDateStr
       ) async {
-    try {
-      DateTime startDate = DateFormat('yyyy-MM-dd').parse(startDateStr);
-      DateTime endDate = DateFormat('yyyy-MM-dd').parse(endDateStr);
+    if (!await areNotificationsEnabled()) return;
 
-      // Temporal triggers based on the lifecycle of the trip
+    try {
+      DateTime startDate;
+      DateTime endDate;
+
+      // Ottimizzazione Tolleranza: Gestisce in sicurezza sia formati DB che formati europei legacy
+      try {
+        startDate = DateFormat('yyyy-MM-dd').parse(startDateStr);
+        endDate = DateFormat('yyyy-MM-dd').parse(endDateStr);
+      } catch (_) {
+        startDate = DateFormat('dd/MM/yyyy').parse(startDateStr);
+        endDate = DateFormat('dd/MM/yyyy').parse(endDateStr);
+      }
+
       DateTime notification1Time = startDate.subtract(const Duration(days: 1)).copyWith(hour: 12, minute: 0);
       DateTime notification2Time = startDate.copyWith(hour: 7, minute: 0);
       DateTime notification3Time = endDate.copyWith(hour: 18, minute: 0);
@@ -104,7 +146,6 @@ class NotificationService {
 
       final now = DateTime.now();
 
-      // 1. Reminder of the day before
       if (notification1Time.isAfter(now)) {
         await _createScheduledNotification(
           id: journeyId.hashCode + 1,
@@ -115,7 +156,6 @@ class NotificationService {
         );
       }
 
-      // 2. Checking the state before leaving
       if (notification2Time.isAfter(now)) {
         await _createScheduledNotification(
           id: journeyId.hashCode + 2,
@@ -126,7 +166,6 @@ class NotificationService {
         );
       }
 
-      // 3. Welcome home
       if (notification3Time.isAfter(now)) {
         await _createScheduledNotification(
           id: journeyId.hashCode + 3,
@@ -137,7 +176,6 @@ class NotificationService {
         );
       }
 
-      // 4. First photo reminder, the day after
       if (photoReminder1.isAfter(now)) {
         await _createPhotoReminderNotification(
           id: journeyId.hashCode + 4,
@@ -148,7 +186,6 @@ class NotificationService {
         );
       }
 
-      // 5. Second photo reminder, 2 days later
       if (photoReminder2.isAfter(now)) {
         await _createPhotoReminderNotification(
           id: journeyId.hashCode + 5,
@@ -159,7 +196,6 @@ class NotificationService {
         );
       }
 
-      // 6. Third photo reminder, one week later
       if (photoReminder3.isAfter(now)) {
         await _createPhotoReminderNotification(
           id: journeyId.hashCode + 6,
