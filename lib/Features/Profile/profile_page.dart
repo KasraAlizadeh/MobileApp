@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../Auth/presentation_page.dart';
 import '../../Appearance/theme_controller.dart';
 import 'privacy_page.dart';
+import 'notifications_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -29,19 +30,24 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || _nameController.text.trim().isEmpty) return;
 
+    // Catturiamo lo ScaffoldMessenger prima delle operazioni asincrone
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
     try {
       await user.updateDisplayName(_nameController.text.trim());
       await user.reload();
-      setState(() {}); // Refresh UI
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Username updated!')),
-        );
-      }
+
+      if (!mounted) return;
+
+      setState(() {}); // Il build method ri-estrarrà il currentUser aggiornato
+      navigator.pop();
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Username updated!')),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (scaffoldMessenger.mounted) {
+        scaffoldMessenger.showSnackBar(
           SnackBar(content: Text('Error updating name: $e')),
         );
       }
@@ -90,9 +96,14 @@ class _ProfilePageState extends State<ProfilePage> {
       _isUploading = true;
     });
 
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        if (mounted) setState(() => _isUploading = false);
+        return;
+      }
 
       final storageRef = FirebaseStorage.instance
           .ref()
@@ -105,34 +116,36 @@ class _ProfilePageState extends State<ProfilePage> {
       await user.updatePhotoURL(downloadUrl);
       await user.reload();
 
+      if (!mounted) return; // OTTIMIZZAZIONE: Protezione contro i leak su chiusura improvvisa
+
       setState(() {
         _isUploading = false;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile picture updated!')),
-        );
-      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Profile picture updated!')),
+      );
     } catch (e) {
-      setState(() {
-        _isUploading = false;
-      });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error uploading image: $e')),
-        );
+        setState(() {
+          _isUploading = false;
+        });
       }
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Error uploading image: $e')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Ri-estrazione dinamica ad ogni ciclo di setState per catturare i dati reali post-reload
     final user = FirebaseAuth.instance.currentUser;
     final username = user?.displayName ?? 'Utente';
     final photoUrl = user?.photoURL;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F6F4), // Mantiene la coerenza cromatica dell'app
       appBar: AppBar(
         title: const Text('Profile'),
       ),
@@ -154,14 +167,14 @@ class _ProfilePageState extends State<ProfilePage> {
                           : null,
                       child: photoUrl == null
                           ? const Icon(
-                              Icons.person,
-                              size: 80,
-                              color: Colors.white,
-                            )
+                        Icons.person,
+                        size: 80,
+                        color: Colors.white,
+                      )
                           : null,
                     ),
                     if (_isUploading)
-                      const CircularProgressIndicator(),
+                      const CircularProgressIndicator(color: Color(0xFF3D5A5A)),
                     Positioned(
                       bottom: 0,
                       right: 0,
@@ -187,7 +200,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   Text(
                     username,
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(width: 10),
                   GestureDetector(
@@ -208,35 +221,45 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
               const SizedBox(height: 40),
+
+              // Navigazione verso le impostazioni e storico unificato
               ListTile(
-                leading: const Icon(Icons.notifications),
-                title: const Text("Notifications"),
+                leading: const Icon(Icons.notifications, color: Color(0xFF3D5A5A)),
+                title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.w500)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const NotificationsPage()),
+                  );
+                },
               ),
-              const Divider(),
+              const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.lock),
-                title: const Text("Privacy and Security"),
+                leading: const Icon(Icons.lock, color: Color(0xFF3D5A5A)),
+                title: const Text("Privacy and Security", style: TextStyle(fontWeight: FontWeight.w500)),
+                trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (context) => const PrivacyPage()),
                   );
                 },
               ),
-              const Divider(),
+              const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.dark_mode_outlined),
-                title: const Text("Dark Mode"),
+                leading: const Icon(Icons.dark_mode_outlined, color: Color(0xFF3D5A5A)),
+                title: const Text("Dark Mode", style: TextStyle(fontWeight: FontWeight.w500)),
                 trailing: Switch(
                   value: Theme.of(context).brightness == Brightness.dark,
+                  activeThumbColor: const Color(0xFF3D5A5A),
                   onChanged: (value) {
                     ThemeController.nextTheme();
                   },
                 ),
               ),
-              const Divider(),
+              const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text('Log out', style: TextStyle(color: Colors.red)),
+                title: const Text('Log out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                 onTap: () async {
                   bool confirm = await showDialog(
                     context: context,
@@ -245,12 +268,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       content: const Text('Do you want to log out?'),
                       actions: [
                         TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Log out', style: TextStyle(color: Colors.red)),
-                        ),
-                        TextButton(
                           onPressed: () => Navigator.of(context).pop(false),
                           child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Log out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -260,13 +283,13 @@ class _ProfilePageState extends State<ProfilePage> {
                     await FirebaseAuth.instance.signOut();
                     if (!context.mounted) return;
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (context) => PresentationPage()),
-                      (route) => false,
+                      MaterialPageRoute(builder: (context) => const PresentationPage()),
+                          (route) => false,
                     );
                   }
                 },
               ),
-              const SizedBox(height: 20), //extra space for scrolling
+              const SizedBox(height: 20),
             ],
           ),
         ),

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import 'Features/Wallet/journey.dart';
 import 'Features/Wallet/journey_details.dart';
@@ -18,9 +19,9 @@ import 'Features/Profile/profile_page.dart';
 import 'Services/notification_service.dart';
 import 'Features/splash_screen.dart';
 
-/// Entry point for code execution
+/// Handler centralizzato per le azioni interattive in Background Isolate
 @pragma("vm:entry-point")
-Future<void> onActionReceivedMethod(ReceivedAction receivedAction) async {
+Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) async {
   String? journeyId = receivedAction.payload?['journeyId'];
   if (journeyId == null) return;
 
@@ -34,27 +35,78 @@ Future<void> onActionReceivedMethod(ReceivedAction receivedAction) async {
   }
 
   if (receivedAction.buttonKeyPressed == 'YES_ACTION') {
-    await FirebaseFirestore.instance
-        .collection('journeys')
-        .doc(journeyId)
-        .update({'state': 'visited'});
-    await AwesomeNotifications().cancel(journeyId.hashCode + 2);
+    try {
+      await FirebaseFirestore.instance
+          .collection('journeys')
+          .doc(journeyId)
+          .update({'state': 'visited'});
+      await AwesomeNotifications().cancel(journeyId.hashCode + 2);
+    } catch (e) {
+      print("Error updating state to visited: $e");
+    }
   }
   else if (receivedAction.buttonKeyPressed == 'CANCEL_ACTION') {
-    await FirebaseFirestore.instance
-        .collection('journeys')
-        .doc(journeyId)
-        .update({'state': 'canceled'});
-    for (int i = 1; i <= 6; i++) {
-      await AwesomeNotifications().cancel(journeyId.hashCode + i);
+    try {
+      // Sincronizzazione Logica: Hard-Delete completo (Documento + File su Storage) anche da background
+      DocumentSnapshot doc = await FirebaseFirestore.instance.collection('journeys').doc(journeyId).get();
+
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        List<dynamic> pdfUrls = data['pdfUrls'] ?? [];
+        List<dynamic> photoUrls = data['photoUrls'] ?? []; // Pulisce anche le foto delle memorie
+
+        // Rimozione PDF associati
+        for (String url in pdfUrls) {
+          if (url.isNotEmpty) {
+            try {
+              await FirebaseStorage.instance.refFromURL(url).delete();
+            } catch (_) {}
+          }
+        }
+
+        // Rimozione Immagini associate
+        for (String url in photoUrls) {
+          if (url.isNotEmpty) {
+            try {
+              await FirebaseStorage.instance.refFromURL(url).delete();
+            } catch (_) {}
+          }
+        }
+
+        await FirebaseFirestore.instance.collection('journeys').doc(journeyId).delete();
+      }
+
+      // Rimozione fisica dell'intera sequenza temporale di notifiche pianificate sul telefono
+      for (int i = 1; i <= 6; i++) {
+        await AwesomeNotifications().cancel(journeyId.hashCode + i);
+      }
+    } catch (e) {
+      print("Error completing background hard-delete transaction: $e");
     }
   }
 }
 
 @pragma("vm:entry-point")
 Future<void> onNotificationCreatedMethod(ReceivedNotification receivedNotification) async {}
+
 @pragma("vm:entry-point")
-Future<void> onNotificationDisplayedMethod(ReceivedNotification receivedNotification) async {}
+Future<void> onNotificationDisplayedMethod(ReceivedNotification receivedNotification) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    print("Firebase initialization warning in background: $e");
+  }
+
+  // Registrazione automatica nello storico reattivo ad ogni emissione visiva
+  await NotificationService.logNotificationToHistory(
+    receivedNotification.title ?? 'Notification',
+    receivedNotification.body ?? '',
+  );
+}
+
 @pragma("vm:entry-point")
 Future<void> onDismissActionReceivedMethod(ReceivedAction receivedAction) async {}
 
@@ -65,6 +117,7 @@ void main() async {
   );
   await NotificationService.initialize();
 
+  // FIX COMPILAZIONE: Agganciato correttamente al nome della funzione unificata
   AwesomeNotifications().setListeners(
     onActionReceivedMethod: onBackgroundActionReceivedMethod,
     onNotificationCreatedMethod: onNotificationCreatedMethod,
@@ -144,7 +197,8 @@ class _MainPageState extends State<MainPage> {
   void initState() {
     super.initState();
     _checkNotificationPermissions();
-    //Let's re-initialize the listener to get the foreground event of navigation
+
+    // Configurazione del listener in primo piano: intercetta i click dell'utente ad app aperta
     AwesomeNotifications().setListeners(
       onActionReceivedMethod: (ReceivedAction receivedAction) async {
         String? journeyId = receivedAction.payload?['journeyId'];
@@ -153,6 +207,7 @@ class _MainPageState extends State<MainPage> {
         if (journeyId != null && (actionFlag == 'edit_photos' || receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION')) {
           _navigateToEditJourney(journeyId);
         } else {
+          // Fallback sul metodo globale per le azioni silenziose
           await onBackgroundActionReceivedMethod(receivedAction);
         }
       },
@@ -162,7 +217,6 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  //Check the lifecycle with "mounted" protocol
   void _navigateToEditJourney(String journeyId) async {
     final doc = await FirebaseFirestore.instance.collection('journeys').doc(journeyId).get();
     if (doc.exists && mounted) {
@@ -185,24 +239,20 @@ class _MainPageState extends State<MainPage> {
   }
 
   void _onItemTapped(int index) {
-    if (_selectedIndex == index) return; //Don't do nothing if you press on tab you're already on
+    if (_selectedIndex == index) return;
     setState(() {
-      _indexesStack.remove(index); //Removes old occurences
-      _indexesStack.add(_selectedIndex); //Keeps in memory the current index before changing
+      _indexesStack.remove(index);
+      _indexesStack.add(_selectedIndex);
       _selectedIndex = index;
     });
   }
-  // Inside your _MainPageState class:
+
   void handleDeepLinkSearch({required int targetIndex, required String queryCity}) {
     setState(() {
-      _selectedIndex = targetIndex; // Switch tab view layout target index to 1 (SearchPage)
+      _selectedIndex = targetIndex;
     });
 
-    // Give the UI a split second to finish the tab layout transition animation,
-    // then pass the city parameter straight down to the active SearchPage state instance!
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // We send a global notification event or read the key reference hook to trigger auto search execution
-      // Alternately, you can pass this via a global state manager or static router argument parameter!
       SearchPage.triggeredCitySearchNotifier.value = queryCity;
     });
   }
@@ -218,7 +268,7 @@ class _MainPageState extends State<MainPage> {
             _selectedIndex = _indexesStack.removeLast();
           });
         } else {
-          SystemNavigator.pop(); //if the stack is empty, exit from the app
+          SystemNavigator.pop();
         }
       },
       child: Scaffold(
