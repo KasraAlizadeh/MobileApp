@@ -33,7 +33,6 @@ class Journey {
     this.state,
   });
 
-  // Helper per estrarre in sicurezza un URL dall'indice senza crash di Out of Bounds
   String? getUrlAt(int index) {
     if (index >= 0 && index < pdfUrls.length) {
       return pdfUrls[index];
@@ -41,7 +40,6 @@ class Journey {
     return null;
   }
 
-  // Deserializzatore: da Documento NoSQL a Oggetto Dart fortemente tipizzato
   factory Journey.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Journey(
@@ -62,7 +60,6 @@ class Journey {
     );
   }
 
-  // Serializzatore: converte l'istanza in una mappa compatibile con Firestore (Tutto centralizzato!)
   Map<String, dynamic> toMap(String? fcmToken) {
     return {
       'userId': userId,

@@ -1,11 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../Services/city_loader_service.dart';
 import '../../Services/file_picker_service.dart';
 import '../../Services/notification_service.dart';
@@ -14,7 +11,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import '../../Services/journey_storage_service.dart';
 import '../../Services/photo_picker_service.dart';
 import '../../Utils/journey_formatter.dart';
@@ -55,7 +51,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   List<Map<String, dynamic>> _accommodationRows = [];
   List<Map<String, dynamic>> _activityRows = [];
 
-  // Formattatore standard per l'interfaccia utente
   final DateFormat _uiDateFormat = DateFormat('dd/MM/yyyy');
 
   @override
@@ -201,7 +196,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       String targetJourneyId;
       DocumentReference docRef;
 
-      // Conversione bidirezionale: da formato UI (dd/MM/yyyy) a formato DB (yyyy-MM-dd)
       String dbStartDate = '';
       String dbEndDate = '';
       try {
@@ -349,7 +343,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       final j = widget.existingJourney!;
       _nameController = TextEditingController(text: j.name);
 
-      // Idratazione e conversione iniziale: da DB (yyyy-MM-dd) a UI (dd/MM/yyyy)
       try {
         if (j.startDate != null && j.startDate!.isNotEmpty) {
           DateTime parsedStart = DateFormat('yyyy-MM-dd').parse(j.startDate!);
@@ -519,7 +512,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                             }),
                             const SizedBox(height: 10),
 
-                            // --- DATE FIELDS (CAMBIO UX: LAYOUT IN VERTICALE) ---
                             _buildTextField(
                               "Start Date",
                               _startController,
@@ -964,7 +956,6 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         child: DropdownButton<String>(
           isExpanded: true,
           hint: const Text("Which destination is this for?", style: TextStyle(fontSize: 12)),
-          // Centralizzazione corretta tramite .toList()
           items: currentDestinations.map((String value) => DropdownMenuItem<String>(value: value, child: Text(value, style: const TextStyle(fontSize: 12)))).toList(),
           onChanged: (val) {
             setState(() {

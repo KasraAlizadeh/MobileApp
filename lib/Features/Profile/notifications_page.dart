@@ -14,7 +14,6 @@ class NotificationsPage extends StatefulWidget {
 class _NotificationsPageState extends State<NotificationsPage> {
   bool _notificationsEnabled = true;
 
-  // CONSIDERAZIONE 1: Memorizziamo lo stream nello stato stabile per evitare sfarfallii quando si tocca lo Switch
   late final Stream<QuerySnapshot> _historyStream;
 
   @override
@@ -22,12 +21,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
     super.initState();
     _loadNotificationPreference();
 
-    // Configurazione sicura dello stream all'avvio
     final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     _historyStream = FirebaseFirestore.instance
         .collection('notification_history')
         .where('userId', isEqualTo: currentUid)
-        .orderBy('timestamp', descending: true) // RICORDA: Richiede l'indice composito su Firebase Console!
+        .orderBy('timestamp', descending: true)
         .limit(20)
         .snapshots();
   }
@@ -60,7 +58,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Sezione Toggle superiore fisso
           Card(
             elevation: 0,
             margin: const EdgeInsets.all(16),
@@ -90,16 +87,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
             ),
           ),
 
-          // Storico delle Notifiche reattivo e protetto
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _historyStream, // Agganciato allo stream persistente dell'initState
+              stream: _historyStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator(color: Color(0xFF3D5A5A)));
                 }
                 if (snapshot.hasError) {
-                  // Suggerimento UX: se l'errore riguarda l'indice, comparirà qui il link per crearlo
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(20.0),

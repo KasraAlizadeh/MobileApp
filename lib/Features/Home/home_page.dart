@@ -349,7 +349,6 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Section 1: Suggested Cities
               SizedBox(
                 height: 250,
                 child: ListView.builder(

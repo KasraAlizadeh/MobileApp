@@ -57,7 +57,6 @@ class _PrivacyPageState extends State<PrivacyPage> {
   Future<void> _toggleBiometrics(bool value) async {
     if (value) {
       try {
-        // Soluzione ultra-compatibile: eliminiamo gli import extra e usiamo la sintassi nativa lineare
         bool authenticated = await _auth.authenticate(
           localizedReason: 'Confirm your identity to enable biometric access',
         );

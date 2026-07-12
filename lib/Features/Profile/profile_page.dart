@@ -30,7 +30,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || _nameController.text.trim().isEmpty) return;
 
-    // Catturiamo lo ScaffoldMessenger prima delle operazioni asincrone
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
@@ -40,7 +39,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
       if (!mounted) return;
 
-      setState(() {}); // Il build method ri-estrarrà il currentUser aggiornato
       navigator.pop();
       scaffoldMessenger.showSnackBar(
         const SnackBar(content: Text('Username updated!')),
@@ -116,7 +114,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await user.updatePhotoURL(downloadUrl);
       await user.reload();
 
-      if (!mounted) return; // OTTIMIZZAZIONE: Protezione contro i leak su chiusura improvvisa
+      if (!mounted) return;
 
       setState(() {
         _isUploading = false;
@@ -139,13 +137,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Ri-estrazione dinamica ad ogni ciclo di setState per catturare i dati reali post-reload
     final user = FirebaseAuth.instance.currentUser;
     final username = user?.displayName ?? 'Utente';
     final photoUrl = user?.photoURL;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F4), // Mantiene la coerenza cromatica dell'app
+      backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
         title: const Text('Profile'),
       ),
@@ -222,7 +219,6 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 40),
 
-              // Navigazione verso le impostazioni e storico unificato
               ListTile(
                 leading: const Icon(Icons.notifications, color: Color(0xFF3D5A5A)),
                 title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.w500)),

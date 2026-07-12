@@ -127,7 +127,6 @@ class NotificationService {
       DateTime startDate;
       DateTime endDate;
 
-      // Ottimizzazione Tolleranza: Gestisce in sicurezza sia formati DB che formati europei legacy
       try {
         startDate = DateFormat('yyyy-MM-dd').parse(startDateStr);
         endDate = DateFormat('yyyy-MM-dd').parse(endDateStr);

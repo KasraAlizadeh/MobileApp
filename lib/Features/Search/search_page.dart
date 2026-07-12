@@ -3,7 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Importato per la gestione dell'utente locale
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
@@ -50,7 +50,6 @@ class _SearchPageState extends State<SearchPage> {
     super.initState();
     SearchPage.triggeredCitySearchNotifier.addListener(_handleIncomingDeepLinkSearch);
 
-    // Inizializzazione isolata dello Stream agganciato alla cache locale di FirebaseAuth
     final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     _userJourneysStream = FirebaseFirestore.instance
         .collection('journeys')
@@ -79,7 +78,6 @@ class _SearchPageState extends State<SearchPage> {
       _isAiLoading = true;
     });
 
-    // Animazione fluida del pannello inferiore
     _sheetController.animateTo(
       0.80,
       duration: const Duration(milliseconds: 300),
@@ -106,7 +104,6 @@ class _SearchPageState extends State<SearchPage> {
       final response = await model.generateContent([Content.text(prompt)]);
       final String? responseText = response.text;
 
-      // CONSIDERAZIONE 4: Controllo di sicurezza obbligatorio dopo le chiamate asincrone HTTP
       if (!mounted) return;
 
       if (responseText != null && responseText.isNotEmpty) {
@@ -160,7 +157,6 @@ class _SearchPageState extends State<SearchPage> {
         final String cityName = destination.toString().trim();
         if (cityName.isEmpty) continue;
 
-        // CONSIDERAZIONE 2 (Continua): Se la città è già registrata in cache saltiamo il Geocoding nativo
         if (_geocodingCache.containsKey(cityName)) {
           final cachedPoint = _geocodingCache[cityName]!;
           localMarkers.add(_createMapMarker(cityName, cachedPoint, state));
@@ -176,7 +172,6 @@ class _SearchPageState extends State<SearchPage> {
             final targetLocation = locations.first;
             final point = LatLng(targetLocation.latitude, targetLocation.longitude);
 
-            // Salvataggio della coordinata indicizzata in memoria locale
             _geocodingCache[cityName] = point;
             localMarkers.add(_createMapMarker(cityName, point, state));
           }
@@ -226,7 +221,7 @@ class _SearchPageState extends State<SearchPage> {
         title: const Text('Journey Explorer', overflow: TextOverflow.ellipsis),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _userJourneysStream, // Collegato allo Stream isolato e immutabile dell'utente
+        stream: _userJourneysStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
           if (snapshot.connectionState == ConnectionState.waiting) {

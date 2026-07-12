@@ -19,7 +19,6 @@ import 'Features/Profile/profile_page.dart';
 import 'Services/notification_service.dart';
 import 'Features/splash_screen.dart';
 
-/// Handler centralizzato per le azioni interattive in Background Isolate
 @pragma("vm:entry-point")
 Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) async {
   String? journeyId = receivedAction.payload?['journeyId'];
@@ -47,15 +46,13 @@ Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) asy
   }
   else if (receivedAction.buttonKeyPressed == 'CANCEL_ACTION') {
     try {
-      // Sincronizzazione Logica: Hard-Delete completo (Documento + File su Storage) anche da background
       DocumentSnapshot doc = await FirebaseFirestore.instance.collection('journeys').doc(journeyId).get();
 
       if (doc.exists) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         List<dynamic> pdfUrls = data['pdfUrls'] ?? [];
-        List<dynamic> photoUrls = data['photoUrls'] ?? []; // Pulisce anche le foto delle memorie
+        List<dynamic> photoUrls = data['photoUrls'] ?? [];
 
-        // Rimozione PDF associati
         for (String url in pdfUrls) {
           if (url.isNotEmpty) {
             try {
@@ -64,7 +61,6 @@ Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) asy
           }
         }
 
-        // Rimozione Immagini associate
         for (String url in photoUrls) {
           if (url.isNotEmpty) {
             try {
@@ -76,7 +72,6 @@ Future<void> onBackgroundActionReceivedMethod(ReceivedAction receivedAction) asy
         await FirebaseFirestore.instance.collection('journeys').doc(journeyId).delete();
       }
 
-      // Rimozione fisica dell'intera sequenza temporale di notifiche pianificate sul telefono
       for (int i = 1; i <= 6; i++) {
         await AwesomeNotifications().cancel(journeyId.hashCode + i);
       }
@@ -100,7 +95,6 @@ Future<void> onNotificationDisplayedMethod(ReceivedNotification receivedNotifica
     print("Firebase initialization warning in background: $e");
   }
 
-  // Registrazione automatica nello storico reattivo ad ogni emissione visiva
   await NotificationService.logNotificationToHistory(
     receivedNotification.title ?? 'Notification',
     receivedNotification.body ?? '',
@@ -117,7 +111,6 @@ void main() async {
   );
   await NotificationService.initialize();
 
-  // FIX COMPILAZIONE: Agganciato correttamente al nome della funzione unificata
   AwesomeNotifications().setListeners(
     onActionReceivedMethod: onBackgroundActionReceivedMethod,
     onNotificationCreatedMethod: onNotificationCreatedMethod,
@@ -198,7 +191,6 @@ class _MainPageState extends State<MainPage> {
     super.initState();
     _checkNotificationPermissions();
 
-    // Configurazione del listener in primo piano: intercetta i click dell'utente ad app aperta
     AwesomeNotifications().setListeners(
       onActionReceivedMethod: (ReceivedAction receivedAction) async {
         String? journeyId = receivedAction.payload?['journeyId'];
@@ -207,7 +199,6 @@ class _MainPageState extends State<MainPage> {
         if (journeyId != null && (actionFlag == 'edit_photos' || receivedAction.buttonKeyPressed == 'RESCHEDULE_ACTION')) {
           _navigateToEditJourney(journeyId);
         } else {
-          // Fallback sul metodo globale per le azioni silenziose
           await onBackgroundActionReceivedMethod(receivedAction);
         }
       },

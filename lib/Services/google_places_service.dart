@@ -6,8 +6,7 @@ import '../constants.dart';
 
 class GooglePlacesService {
   final String _apiKey = googleMapsApiKey;
-  
-  // In-memory cache per questa sessione
+
   static final Map<String, String> _photoUrlCache = {};
 
   Future<List<Map<String, dynamic>>> getSuggestions(String input) async {
@@ -81,8 +80,7 @@ class GooglePlacesService {
 
   Future<String> getCityStats(String cityName) async {
     String regionInfo = "";
-    
-    // 1. Recupero info geografiche (Regione/Provincia) tramite Geocoding
+
     try {
       List<Location> locations = await locationFromAddress(cityName).timeout(const Duration(seconds: 2));
       if (locations.isNotEmpty) {
@@ -210,7 +208,7 @@ class GooglePlacesService {
 
   Future<String?> getPlacePhotoUrl(String cityName) async {
     final cleanCityName = cityName.trim().toLowerCase();
-    
+
     // 1. Check in-memory cache
     if (_photoUrlCache.containsKey(cleanCityName)) {
       return _photoUrlCache[cleanCityName];

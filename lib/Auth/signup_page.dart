@@ -150,7 +150,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   obscureText: true,
                   textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _register(), // Registrazione rapida al click di "Invio" sulla tastiera
+                  onSubmitted: (_) => _register(),
                 ),
                 const SizedBox(height: 30),
                 _isLoading
