@@ -279,4 +279,26 @@ class NotificationService {
       await AwesomeNotifications().cancel(journeyId.hashCode + i);
     }
   }
+
+  static Future<void> sendTestNotifications() async {
+    final List<Map<String, String>> tests = [
+      {'title': '✈️ Upcoming Trip!', 'body': 'Your trip to Paris starts tomorrow!'},
+      {'title': '📸 Precious Memories', 'body': 'Don\'t forget to upload photos from your trip.'},
+      {'title': '🏡 Welcome Back!', 'body': 'We hope your trip was amazing.'},
+      {'title': '✨ New Adventure', 'body': 'Discover new destinations recommended for you!'},
+    ];
+
+    for (int i = 0; i < tests.length; i++) {
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: 1000 + i,
+          channelKey: 'trip_reminders',
+          title: tests[i]['title'],
+          body: tests[i]['body'],
+          notificationLayout: NotificationLayout.Default,
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+  }
 }

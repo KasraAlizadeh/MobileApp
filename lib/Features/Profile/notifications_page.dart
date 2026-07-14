@@ -51,9 +51,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
-        title: const Text('Notification Settings'),
+        title: const Text('Notifications'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined),
+            tooltip: 'Send test notifications',
+            onPressed: () async {
+              await NotificationService.sendTestNotifications();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Test notifications sent!')),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,7 +84,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               value: _notificationsEnabled,
               onChanged: _toggleNotifications,
               activeThumbColor: const Color(0xFF3D5A5A),
-              secondary: const Icon(Icons.notifications_active, color: Color(0xFF3D5A5A)),
+              secondary: const Icon(Icons.notifications_active),
             ),
           ),
 
@@ -79,11 +92,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
             child: Text(
               'Notification History',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: Theme.of(context).primaryColor,
-              ),
+              style: Theme.of(context).textTheme.titleMedium
             ),
           ),
 
@@ -107,7 +116,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.notifications_none, size: 50, color: Colors.grey.shade400),
+                        Icon(Icons.notifications_none, size: 50),
                         const SizedBox(height: 10),
                         const Text('No notification history yet.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
                       ],
@@ -132,15 +141,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     return Card(
                       elevation: 0,
                       margin: const EdgeInsets.symmetric(vertical: 4),
-                      color: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(color: Colors.grey.shade100),
                       ),
                       child: ListTile(
                         leading: const CircleAvatar(
-                          backgroundColor: Color(0xFFE8EFE8),
-                          child: Icon(Icons.info_outline, color: Color(0xFF3D5A5A)),
+                          child: Icon(Icons.info_outline),
                         ),
                         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                         subtitle: Padding(
@@ -148,7 +155,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(body, style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                              Text(body, style: TextStyle(fontSize: 13)),
                               const SizedBox(height: 6),
                               Text(
                                 dateStr,

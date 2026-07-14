@@ -142,7 +142,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final photoUrl = user?.photoURL;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F4),
       appBar: AppBar(
         title: const Text('Profile'),
       ),
@@ -220,7 +219,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 40),
 
               ListTile(
-                leading: const Icon(Icons.notifications, color: Color(0xFF3D5A5A)),
+                leading: const Icon(Icons.notifications),
                 title: const Text("Notifications", style: TextStyle(fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
@@ -231,7 +230,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.lock, color: Color(0xFF3D5A5A)),
+                leading: const Icon(Icons.lock),
                 title: const Text("Privacy and Security", style: TextStyle(fontWeight: FontWeight.w500)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
@@ -242,11 +241,10 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.dark_mode_outlined, color: Color(0xFF3D5A5A)),
+                leading: const Icon(Icons.dark_mode_outlined),
                 title: const Text("Dark Mode", style: TextStyle(fontWeight: FontWeight.w500)),
                 trailing: Switch(
                   value: Theme.of(context).brightness == Brightness.dark,
-                  activeThumbColor: const Color(0xFF3D5A5A),
                   onChanged: (value) {
                     ThemeController.nextTheme();
                   },
