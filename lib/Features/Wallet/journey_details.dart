@@ -40,6 +40,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
   String _selectedType = 'Travel Type';
+  String _tripState = 'to_be_visited';
   File? _newVisaFile, _newTicketFile, _newInsuranceFile;
   List<String> _italianCities = [];
   bool _isCitiesLoading = true;
@@ -256,7 +257,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
         'notes': _notesController.text.trim(),
         'pdfUrls': _finalPdfUrls,
         'photoUrls': consolidatedPhotoUrls,
-        'state': widget.existingJourney?.state ?? 'to_be_visited',
+        'state': _tripState,
         'fcmToken': fcmToken,
       };
 
@@ -265,12 +266,15 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
       if (widget.existingJourney != null) {
         await NotificationService.cancelTripAutomations(targetJourneyId);
       }
-      await NotificationService.scheduleTripAutomations(
-        targetJourneyId,
-        newFolder,
-        dbStartDate,
-        dbEndDate,
-      );
+
+      if (_tripState == 'to_be_visited') {
+        await NotificationService.scheduleTripAutomations(
+          targetJourneyId,
+          newFolder,
+          dbStartDate,
+          dbEndDate,
+        );
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text("Error saving journey: $e")));
     } finally {
@@ -342,6 +346,7 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
     if (widget.existingJourney != null) {
       final j = widget.existingJourney!;
       _nameController = TextEditingController(text: j.name);
+      _tripState = j.state ?? 'to_be_visited';
 
       try {
         if (j.startDate != null && j.startDate!.isNotEmpty) {
@@ -536,6 +541,10 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
+                      if (isEditOrViewMode) ...[
+                        _buildStatusSection(),
+                        const SizedBox(height: 20),
+                      ],
                       if (isEditOrViewMode) ...[
                         _buildSectionWrapper(
                           title: "Journey Memories 📸",
@@ -882,6 +891,43 @@ class _JourneyDetailsPageState extends State<JourneyDetailsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStatusSection() {
+    return _buildSectionWrapper(
+      title: "Trip Status",
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _statusOption("Planned", 'to_be_visited', Colors.orange),
+          _statusOption("Visited", 'visited', Colors.green),
+          _statusOption("Canceled", 'canceled', Colors.red),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusOption(String label, String value, Color color) {
+    bool isSelected = _tripState == value;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isSelected ? color : Colors.grey.shade100,
+            foregroundColor: isSelected ? Colors.white : Colors.black87,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(color: isSelected ? color : Colors.grey.shade300),
+            ),
+          ),
+          onPressed: widget.isReadOnly ? null : () => setState(() => _tripState = value),
+          child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        ),
       ),
     );
   }
